@@ -1,0 +1,196 @@
+@import url("https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Shantell+Sans:ital,wght@0,300;0,400;0,500;0,600;0,800;1,300;1,400;1,500;1,600;1,700;1,800&display=swap");
+html {
+  font-family: "Rajdhani", sans-serif;
+}
+body {
+  background-color: #ebebeb;
+}
+header {
+  margin-bottom: 5em;
+}
+header > h1 {
+  text-align: center;
+  font-size: 4em;
+  margin-bottom: 0;
+  margin-top: 0;
+  margin-left: -3em;
+  font: 5em "Shantell Sans", cursive;
+  font-weight: 600;
+}
+
+header > span {
+  display: block;
+  text-align: center;
+  font: 5em "Shantell Sans", cursive;
+  font-weight: 600;
+
+  -webkit-transform: rotate(-15deg);
+  transform: rotate(-15deg);
+  margin-left: 2em;
+  margin-top: -0.5em;
+}
+header svg {
+  margin-bottom: -1.35em;
+  margin-right: -1.1em;
+  -webkit-transform: rotate(10deg);
+  transform: rotate(10deg);
+  fill: #8338ec;
+}
+.button {
+  font-weight: 600;
+  display: block;
+  margin: 1em auto;
+  padding: 0.3em;
+  font-size: 2em;
+  text-decoration: none;
+  color: white;
+  background-color: black;
+  width: fit-content;
+}
+.button:hover,
+.button2:hover {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.button2 {
+  font-weight: 600;
+  text-align: center;
+  display: block;
+  padding: 0.2em 0;
+  font-size: 2em;
+  text-decoration: none;
+  color: black;
+  width: initial;
+  background-color: #ffe205;
+}
+
+main {
+  display: flex;
+  width: 1600px;
+  margin: 0 auto;
+
+  box-shadow: -4px 1px 14px 13px rgba(0, 0, 0, 1);
+  -webkit-box-shadow: -4px 1px 14px 13px rgba(0, 0, 0, 1);
+  -moz-box-shadow: -4px 1px 14px 13px rgba(0, 0, 0, 1);
+}
+
+.map {
+  height: 800px;
+  width: 75%;
+  background-color: #3e4e50;
+  overflow: hidden;
+}
+.edit {
+  background-color: rgb(0, 0, 139);
+}
+.sidemenu {
+  background-color: #8338ec;
+  width: 25%;
+  height: 800px;
+  display: flex;
+  flex-direction: column;
+}
+.blue {
+  background-color: #31e981;
+  border-color: #31e981;
+}
+.container {
+  border: 5px solid #31e981;
+  border-top: none;
+  background-color: #1d2222;
+  height: 100%;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.container2 {
+  border: 5px solid #ffe205;
+  border-top: none;
+  background-color: #1d2222;
+  height: 0;
+  overflow: auto;
+  scrollbar-width: 20px;
+}
+.container,
+.container2 {
+  transition: height 0.5s;
+}
+.devicecontainer {
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  border: 3px solid #ffe205;
+  background-color: #ffe205;
+  margin: 1em 2em;
+  border-radius: 2em;
+  color: black;
+}
+.notificationcontainer {
+  overflow: hidden;
+  max-height: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: #31e981;
+  width: 22em;
+  margin: 1em auto;
+  border-radius: 2em;
+  color: black;
+  transition: max-height 0.3s, max-width 0.5s;
+}
+
+.notificationcontainer > a:hover {
+  background-color: red;
+  fill: white;
+}
+.notificationcontainer > a {
+  padding-top: 0.3em;
+  width: 100%;
+  text-align: center;
+}
+.sidemenu h2 {
+  width: 100%;
+  margin: 0 0 0.5em 0;
+  text-align: center;
+  border-bottom: 2px solid#8338EC;
+}
+.sidemenu p {
+  padding: 0 0.5em 0.5em 0.5em;
+  margin: 0;
+  text-align: center;
+  font-size: 1.3em;
+}
+.object {
+  top: 0;
+  left: 0;
+  padding: 40px;
+  background-color: white;
+  width: fit-content;
+  position: relative;
+}
+
+.devicecontainer .online {
+  font-size: 2em;
+  color: #00ff6e;
+  font-weight: 800;
+  -webkit-text-stroke-width: 1px;
+  -webkit-text-stroke-color: black;
+}
+
+.devicecontainer .offline {
+  font-size: 2em;
+  color: #ff0000;
+  font-weight: 800;
+}
+
+.level2 {
+  background-color: #f89524;
+  color: black;
+}
+.level3 {
+  background-color: #57269c;
+  color: white;
+}
