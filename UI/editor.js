@@ -28,10 +28,10 @@ function AddEventListeners() {
 function EditMap() {
   const btn = document.querySelector(".button");
 
-  btn.style.maxWidth = "0";
-  document.querySelector(".container").style.height = "0";
   document.querySelector(".button2.green").style.maxHeight = "0";
   document.querySelector(".button2.green").style.padding = "0";
+  btn.style.maxWidth = "0";
+  document.querySelector(".container").style.height = "0";
   document.querySelector(".container2").style.height = "50%";
   document.querySelector(".container3").style.width = "100%";
   document.querySelector(".container3").style.height = "50%";
@@ -42,8 +42,8 @@ function EditMap() {
       '<p><svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512"><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><style>svg{fill:#ffffff}</style><path d="M177.5 414c-8.8 3.8-19 2-26-4.6l-144-136C2.7 268.9 0 262.6 0 256s2.7-12.9 7.5-17.4l144-136c7-6.6 17.2-8.4 26-4.6s14.5 12.5 14.5 22l0 72 288 0c17.7 0 32 14.3 32 32l0 64c0 17.7-14.3 32-32 32l-288 0 0 72c0 9.6-5.7 18.2-14.5 22z"/></svg>Close Editor<svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512"><!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --><style>svg{fill:#ffffff}</style><path d="M177.5 414c-8.8 3.8-19 2-26-4.6l-144-136C2.7 268.9 0 262.6 0 256s2.7-12.9 7.5-17.4l144-136c7-6.6 17.2-8.4 26-4.6s14.5 12.5 14.5 22l0 72 288 0c17.7 0 32 14.3 32 32l0 64c0 17.7-14.3 32-32 32l-288 0 0 72c0 9.6-5.7 18.2-14.5 22z"/></svg></p>';
 
     btn.style.order = "5";
-    btn.style.maxWidth = "41px";
-  }, 400);
+    btn.style.maxWidth = "40px";
+  }, 500);
 
   const map = document.querySelector(".map");
   map.setAttribute("class", "map edit");
@@ -52,6 +52,18 @@ function EditMap() {
 
   btn.removeEventListener("click", EditMap);
   btn.addEventListener("click", ExitEditor);
+
+  const placedDevices = Array.from(document.querySelectorAll(".recieverID"));
+  document.querySelectorAll(".devicecontainer").forEach((item) => {
+    if (
+      !placedDevices.find((x) => x.textContent === item.children[0].textContent)
+    ) {
+      item.setAttribute("draggable", "true");
+      item.setAttribute("ondragstart", "drag(event)");
+    } else {
+      item.classList += " inactive";
+    }
+  });
 
   document.querySelectorAll(".object").forEach((item) => {
     item.addEventListener("mousedown", Hold);
@@ -65,8 +77,9 @@ function ExitEditor() {
   const btn = document.querySelector(".button");
   btn.style.maxWidth = "0";
   document.querySelector(".container").style.height = "100%";
-  document.querySelector(".button2.green").style.maxHeight = "initial";
-  document.querySelector(".button2.green").style.padding = "initial";
+  document.querySelector(".button2.green").style.maxHeight = "41px";
+  document.querySelector(".button2.green").style.paddingTop = "0.2em";
+  document.querySelector(".button2.green").style.paddingBottom = "0.2em";
   document.querySelector(".container2").style.height = "0";
   document.querySelector(".container3").style.width = "0";
   document.querySelector(".container3").style.height = "0";
@@ -79,6 +92,9 @@ function ExitEditor() {
 
     btn.style.maxWidth = "41px";
   }, 300);
+  document.querySelectorAll(".devicecontainer").forEach((item) => {
+    item.classList = "devicecontainer";
+  });
   while (
     Array.from(
       document.querySelector(".sidemenu").querySelectorAll(".sidemenu>.button")
@@ -128,28 +144,59 @@ function SnapToGrid() {
   blocks.forEach((block) => {
     let posY = Number(window.getComputedStyle(block).top.split("p")[0]);
     let posX = Number(window.getComputedStyle(block).left.split("p")[0]);
-    console.log(posY);
-    console.log(posX);
-    if (posY % 10 != 0) {
-      if (posY % 10 < 5) {
-        posY -= posY % 10;
+    if (posY % 40 != 0) {
+      if (posY % 40 < 20) {
+        posY -= posY % 40;
       } else {
-        posY += 10 - (posY % 10);
+        posY += 40 - (posY % 40);
       }
     }
 
-    if (posX % 10 != 0) {
-      if (posX % 10 < 5) {
-        posX -= posX % 10;
+    if (posX % 40 != 0) {
+      if (posX % 40 < 20) {
+        posX -= posX % 40;
       } else {
-        posX += 10 - (posX % 10);
+        posX += 40 - (posX % 40);
       }
     }
-
-    console.log(posY);
-    console.log(posX);
 
     block.style.top = posY + "px";
     block.style.left = posX + "px";
   });
+}
+
+function allowDrop(ev) {
+  ev.preventDefault();
+}
+
+function drag(ev) {
+  ev.dataTransfer.setData("text", ev.target.children[0].textContent);
+}
+function drop(ev) {
+  ev.preventDefault();
+
+  const transferdData = ev.dataTransfer.getData("text");
+  const deviceDiv = Array.from(
+    document.querySelectorAll(".devicecontainer")
+  ).find((x) => x.children[0].textContent === transferdData);
+  deviceDiv.classList += " inactive";
+  deviceDiv.removeAttribute("draggable");
+  deviceDiv.removeAttribute("ondragstart");
+
+  const newReciver = document.createElement("div");
+  newReciver.classList += "object reciever";
+  const p = document.createElement("p");
+  p.classList += "recieverID";
+  newReciver.appendChild(p);
+  newReciver.children[0].textContent = transferdData;
+  newReciver.style.top = ev.layerY + "px";
+  newReciver.style.left = ev.layerX + "px";
+  newReciver.addEventListener("mousedown", Hold);
+
+  ev = ev.target;
+  if (ev.classList[0] !== "map") {
+    ev = ev.parentElement;
+  }
+
+  ev.appendChild(newReciver);
 }

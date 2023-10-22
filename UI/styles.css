@@ -7,7 +7,7 @@ body {
   background-color: #ebebeb;
 }
 header {
-  margin-bottom: 5em;
+  margin: 2em 0 8em 0;
 }
 header > h1 {
   text-align: center;
@@ -67,7 +67,7 @@ a.button > p {
 .button2 {
   font-weight: 600;
   text-align: center;
-  max-height: 800px;
+  max-height: 41px;
   display: block;
   padding: 0.2em 0;
   font-size: 2em;
@@ -89,6 +89,7 @@ main {
 }
 
 .map {
+  position: relative;
   height: 800px;
   width: 75%;
   background-color: #3e4e50;
@@ -102,7 +103,7 @@ main {
 }
 .sidemenu {
   background-color: #8338ec;
-  width: 25%;
+  width: 26%;
   height: 800px;
   display: flex;
   flex-direction: column;
@@ -192,12 +193,30 @@ main {
 .object {
   top: 0;
   left: 0;
-  padding: 40px;
+  padding: 20px 40px;
   background-color: white;
   width: fit-content;
-  position: relative;
+  position: absolute;
 }
 
+.reciever {
+  position: absolute;
+  background-color: #ffe205;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+.recieverID {
+  color: white;
+  user-select: none;
+  pointer-events: none;
+  font-size: 2em;
+  font-weight: 500;
+  padding-top: 0.5em;
+  margin-left: -1.4em;
+  white-space: nowrap;
+}
 .devicecontainer .online {
   font-size: 2em;
   color: #00ff6e;
@@ -219,4 +238,13 @@ main {
 .level3 {
   background-color: #57269c;
   color: white;
+}
+
+.inactive {
+  background-color: #7e8788;
+  border-color: #7e8788;
+}
+
+[draggable]:hover {
+  cursor: grab;
 }
