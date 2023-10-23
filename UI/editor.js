@@ -67,9 +67,28 @@ function EditMap() {
 
   document.querySelectorAll(".object").forEach((item) => {
     item.addEventListener("mousedown", Hold);
-    document.addEventListener("mouseup", () =>
-      cancelAnimationFrame(animationFrameId)
-    );
+    if (!item.hasChildNodes()) {
+      item.classList += " hover";
+      item.innerHTML = `<div class="measuring"style="visibility:${
+        item.offsetWidth > 60 ? "visible" : "hidden"
+      };"><p><</p><div></div><p class="measurement"> ${
+        item.offsetWidth
+      }px </p><div></div><p>></p></div>`;
+
+      item.innerHTML += `<div class="height-measuring" style="visibility:${
+        item.offsetHeight > 60 ? "visible" : "hidden"
+      };">
+      <p>></p>
+      <div></div>
+      <p class="measurement-height">${item.offsetHeight}px</p>
+      <div></div>
+      <p><</p>
+    </div>`;
+    }
+
+    document.addEventListener("mouseup", () => {
+      cancelAnimationFrame(animationFrameId);
+    });
   });
 }
 
@@ -110,6 +129,10 @@ function ExitEditor() {
 
   document.querySelectorAll(".object").forEach((item) => {
     item.removeEventListener("mousedown", Hold);
+    if (item.firstChild.firstChild) {
+      item.classList = "object";
+      item.innerHTML = "";
+    }
     document.removeEventListener("mouseup", () =>
       cancelAnimationFrame(animationFrameId)
     );
@@ -123,7 +146,16 @@ let animationFrameId;
 
 function Hold(e) {
   const obj = e.target;
-  const moveObject = () => {
+  if (e.layerX > obj.offsetWidth - 5) {
+    resizeObjectRight();
+  } else if (e.layerX < 5) {
+    resizeObjectLeft();
+  } else if (e.layerY > obj.offsetHeight - 5) {
+    resizeObjectBottom();
+  } else {
+    moveObject();
+  }
+  function moveObject() {
     let newOffsetY = Math.round(
       Number(window.getComputedStyle(obj).top.split("p")[0]) + offsetY
     );
@@ -134,9 +166,43 @@ function Hold(e) {
     obj.style.top = newOffsetY + "px";
     obj.style.left = newOffsetX + "px";
     animationFrameId = requestAnimationFrame(moveObject);
-  };
+  }
+  function resizeObjectBottom() {
+    obj.style.height = Number(obj.offsetHeight + offsetY) + "px";
+    if (obj.offsetHeight > 60) {
+      obj.querySelector(".height-measuring").style.visibility = "visible";
+      obj.querySelector(".measurement-height").textContent =
+        obj.offsetHeight + "px";
+    } else {
+      obj.querySelector(".height-measuring").style.visibility = "hidden";
+    }
 
-  moveObject();
+    animationFrameId = requestAnimationFrame(resizeObjectBottom);
+  }
+  function resizeObjectRight() {
+    obj.style.width = Number(obj.offsetWidth + offsetX) + "px";
+
+    obj.firstChild.querySelector(".measurement").textContent =
+      obj.offsetWidth + "px";
+
+    if (obj.offsetWidth > 60) {
+      obj.querySelector(".measuring").style.visibility = "visible";
+    } else {
+      obj.querySelector(".measuring").style.visibility = "hidden";
+    }
+
+    animationFrameId = requestAnimationFrame(resizeObjectRight);
+  }
+  function resizeObjectLeft() {
+    let newOffsetX = Math.round(
+      Number(window.getComputedStyle(obj).left.split("p")[0]) + offsetX
+    );
+    obj.firstChild.querySelector(".measurement").textContent =
+      obj.offsetWidth + "px";
+    obj.style.left = newOffsetX + "px";
+    obj.style.width = Number(obj.offsetWidth + offsetX * -1) + "px";
+    animationFrameId = requestAnimationFrame(resizeObjectLeft);
+  }
 }
 
 function SnapToGrid() {

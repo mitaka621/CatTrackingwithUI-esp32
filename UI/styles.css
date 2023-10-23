@@ -5,6 +5,7 @@ html {
 }
 body {
   background-color: #ebebeb;
+  user-select: none;
 }
 header {
   margin: 2em 0 8em 0;
@@ -191,14 +192,38 @@ main {
   font-size: 1.3em;
 }
 .object {
-  top: 0;
-  left: 0;
-  padding: 20px 40px;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
   background-color: white;
-  width: fit-content;
   position: absolute;
 }
 
+.hover::before {
+  content: "";
+  position: absolute;
+  height: 100%;
+  left: 5px;
+  right: 5px;
+}
+.hover::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  right: 5px;
+}
+.hover:hover::after {
+  cursor: move;
+}
+.hover:hover::before {
+  cursor: n-resize;
+}
+.hover:hover {
+  cursor: e-resize;
+}
 .reciever {
   position: absolute;
   background-color: #ffe205;
@@ -217,6 +242,74 @@ main {
   margin-left: -1.4em;
   white-space: nowrap;
 }
+
+.measuring {
+  overflow: hidden;
+  color: white;
+  font-size: 1.5em;
+  border-left: 1px solid white;
+  border-right: 1px solid white;
+  pointer-events: none;
+  user-select: none;
+  display: flex;
+  justify-content: space-between;
+  height: fit-content;
+  margin-top: -1.2em;
+}
+
+.measuring p {
+  margin: 0;
+}
+
+.measuring div {
+  width: 100%;
+  border-top: 2px solid white;
+  margin-top: 0.55em;
+}
+/*  */
+.height-measuring {
+  overflow: hidden;
+  color: white;
+  font-size: 1.5em;
+  pointer-events: none;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  height: 98%;
+  border-top: 1px solid white;
+  border-bottom: 1px solid white;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 1.5em;
+  margin-left: -1.5em;
+  margin-top: -0.05em;
+}
+
+.height-measuring p {
+  margin: 0;
+}
+
+div.height-measuring div {
+  height: 90%;
+  border-left: 2px solid white;
+  margin: 0;
+}
+
+.height-measuring p {
+  transform: rotate(-90deg);
+}
+.height-measuring p:nth-child(1),
+.height-measuring p:nth-child(5) {
+  margin-top: -0.4em;
+  margin-bottom: -0.4em;
+}
+.height-measuring p:nth-child(3) {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+
+/*  */
+
 .devicecontainer .online {
   font-size: 2em;
   color: #00ff6e;
