@@ -38,6 +38,7 @@ header svg {
   transform: rotate(10deg);
   fill: #8338ec;
 }
+
 .button {
   font-weight: 600;
   display: flex;
@@ -51,6 +52,10 @@ header svg {
   width: fit-content;
   overflow: hidden;
   transition: max-width 0.2s;
+}
+.delete {
+  color: #ffe205;
+  -webkit-text-stroke: 0.5px white;
 }
 a.button > p {
   display: block;
