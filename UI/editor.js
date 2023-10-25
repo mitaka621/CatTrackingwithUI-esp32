@@ -25,6 +25,10 @@ function AddEventListeners() {
   document.querySelector(".button").addEventListener("click", EditMap);
 }
 
+function pxToM(px, modifier = 0.015) {
+  return (px * modifier).toFixed(1);
+}
+
 function EditMap() {
   const btn = document.querySelector(".button");
 
@@ -60,6 +64,7 @@ function EditMap() {
     ) {
       item.setAttribute("draggable", "true");
       item.setAttribute("ondragstart", "drag(event)");
+      item.style.cursor = "drag";
     } else {
       item.classList += " inactive";
     }
@@ -71,16 +76,16 @@ function EditMap() {
       item.classList += " hover";
       item.innerHTML = `<div class="measuring"style="visibility:${
         item.offsetWidth > 60 ? "visible" : "hidden"
-      };"><p><</p><div></div><p class="measurement"> ${
+      };"><p><</p><div></div><p class="measurement"> ${pxToM(
         item.offsetWidth
-      }px </p><div></div><p>></p></div>`;
+      )}m </p><div></div><p>></p></div>`;
 
       item.innerHTML += `<div class="height-measuring" style="visibility:${
         item.offsetHeight > 60 ? "visible" : "hidden"
       };">
       <p>></p>
       <div></div>
-      <p class="measurement-height">${item.offsetHeight}px</p>
+      <p class="measurement-height">${pxToM(item.offsetHeight)}m</p>
       <div></div>
       <p><</p>
     </div>`;
@@ -113,6 +118,9 @@ function ExitEditor() {
   }, 300);
   document.querySelectorAll(".devicecontainer").forEach((item) => {
     item.classList = "devicecontainer";
+    item.style.cursor = "auto";
+    item.setAttribute("draggable", "null");
+    item.setAttribute("ondragstart", "null");
   });
   while (
     Array.from(
@@ -129,7 +137,8 @@ function ExitEditor() {
 
   document.querySelectorAll(".object").forEach((item) => {
     item.removeEventListener("mousedown", Hold);
-    if (item.firstChild.firstChild) {
+    console.log(item.classList);
+    if (item.classList[1] !== "reciever") {
       item.classList = "object";
       item.innerHTML = "";
     }
@@ -172,7 +181,7 @@ function Hold(e) {
     if (obj.offsetHeight > 60) {
       obj.querySelector(".height-measuring").style.visibility = "visible";
       obj.querySelector(".measurement-height").textContent =
-        obj.offsetHeight + "px";
+        pxToM(obj.offsetHeight) + "m";
     } else {
       obj.querySelector(".height-measuring").style.visibility = "hidden";
     }
@@ -183,7 +192,7 @@ function Hold(e) {
     obj.style.width = Number(obj.offsetWidth + offsetX) + "px";
 
     obj.firstChild.querySelector(".measurement").textContent =
-      obj.offsetWidth + "px";
+      pxToM(obj.offsetWidth) + "m";
 
     if (obj.offsetWidth > 60) {
       obj.querySelector(".measuring").style.visibility = "visible";
@@ -198,10 +207,16 @@ function Hold(e) {
       Number(window.getComputedStyle(obj).left.split("p")[0]) + offsetX
     );
     obj.firstChild.querySelector(".measurement").textContent =
-      obj.offsetWidth + "px";
+      pxToM(obj.offsetWidth) + "m";
     obj.style.left = newOffsetX + "px";
     obj.style.width = Number(obj.offsetWidth + offsetX * -1) + "px";
     animationFrameId = requestAnimationFrame(resizeObjectLeft);
+
+    if (obj.offsetWidth > 60) {
+      obj.querySelector(".measuring").style.visibility = "visible";
+    } else {
+      obj.querySelector(".measuring").style.visibility = "hidden";
+    }
   }
 }
 
@@ -273,6 +288,9 @@ function AddNewBlock() {
   div.innerHTML = `<div class="measuring"style="visibility:hidden;"><p><</p><div></div><p class="measurement"></p><div></div><p>></p></div><div class="height-measuring" style="visibility: hidden;"><p>></p><div></div><p class="measurement-height"></p><div></div><p><</p></div>`;
   div.addEventListener("mousedown", Hold);
   document.querySelector(".map").appendChild(div);
+  document.addEventListener("mouseup", () => {
+    cancelAnimationFrame(animationFrameId);
+  });
   SnapToGrid();
 }
 
@@ -281,9 +299,23 @@ function deleteBlocks(e) {
   if (!isEnabled) {
     isEnabled = true;
     e.classList += " delete";
+    e.style.color = "#ffe205";
+    document.querySelectorAll('[class="button"]').forEach((item) => {
+      item.style.pointerEvents = "none";
+      item.style.color = "grey";
+    });
+    document.querySelectorAll(".devicecontainer").forEach((item) => {
+      if (!String(item.classList).includes("inactive"))
+        item.setAttribute("draggable", "null");
+      item.setAttribute("ondragstart", "null");
+      item.classList += " inactive";
+      item.style.cursor = "auto";
+    });
     document.querySelectorAll(".object").forEach((item) => {
-      if (item.firstChild.firstChild) {
-        item.classList = "object";
+      let classes = String(item.classList);
+      if (classes.includes("hover")) {
+        classes = classes.replace(" hover", "");
+        item.classList = classes;
       }
 
       item.addEventListener("dblclick", deleteSpecifiedBlock);
@@ -299,8 +331,15 @@ function deleteBlocks(e) {
   } else {
     isEnabled = false;
     e.classList = "button";
+    document.querySelectorAll('[class="button"]').forEach((item) => {
+      item.style.pointerEvents = "auto";
+      item.style.color = "white";
+    });
+
     document.querySelectorAll(".object").forEach((item) => {
-      item.style.backgroundColor = "white";
+      String(item.classList) === "object reciever"
+        ? (item.style.backgroundColor = "#ffe205")
+        : (item.style.backgroundColor = "white");
       item.style.borderStyle = "none";
       item.style.cursor = "e-resize";
       item.removeEventListener("dblclick", deleteSpecifiedBlock);
@@ -312,6 +351,23 @@ function deleteBlocks(e) {
       document.addEventListener("mouseup", () => {
         cancelAnimationFrame(animationFrameId);
       });
+    });
+
+    const placedDevices = Array.from(document.querySelectorAll(".recieverID"));
+    document.querySelectorAll(".devicecontainer").forEach((item) => {
+      if (
+        !placedDevices.find(
+          (x) => x.textContent === item.children[0].textContent
+        )
+      ) {
+        item.classList = "devicecontainer";
+        console.log("here");
+        item.setAttribute("draggable", "true");
+        item.setAttribute("ondragstart", "drag(event)");
+        item.style.cursor = "grab";
+      } else if (!String(item.classList).includes("inactive")) {
+        item.classList += " inactive";
+      }
     });
   }
 }

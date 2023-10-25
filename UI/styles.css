@@ -54,7 +54,6 @@ header svg {
   transition: max-width 0.2s;
 }
 .delete {
-  color: #ffe205;
   -webkit-text-stroke: 0.5px white;
 }
 a.button > p {
