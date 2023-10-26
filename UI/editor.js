@@ -6,8 +6,8 @@ let oldCursorPosX = 0,
   offsetY;
 
 function detectMouseMovement(event) {
-  offsetX = event.clientX - oldCursorPosX;
-  offsetY = event.clientY - oldCursorPosY;
+  offsetX = (event.clientX - oldCursorPosX) * 0.7;
+  offsetY = (event.clientY - oldCursorPosY) * 0.7;
   oldCursorPosX = event.clientX;
   oldCursorPosY = event.clientY;
   clearTimeout(timeoutId);
@@ -25,8 +25,12 @@ function AddEventListeners() {
   document.querySelector(".button").addEventListener("click", EditMap);
 }
 
+let zoomLevel = 1;
 function pxToM(px, modifier = 0.015) {
-  return (px * modifier).toFixed(1);
+  return (
+    (px * modifier) /
+    (zoomLevel < 0 ? 1 / (zoomLevel * -1) : zoomLevel)
+  ).toFixed(1);
 }
 
 function EditMap() {
@@ -69,7 +73,9 @@ function EditMap() {
       item.classList += " inactive";
     }
   });
-
+  document.querySelectorAll(".recieverID").forEach((item) => {
+    item.style.visibility = "visible";
+  });
   document.querySelectorAll(".object").forEach((item) => {
     item.addEventListener("mousedown", Hold);
     if (!item.hasChildNodes()) {
@@ -94,6 +100,11 @@ function EditMap() {
     document.addEventListener("mouseup", () => {
       cancelAnimationFrame(animationFrameId);
     });
+  });
+
+  document.querySelector(".move").addEventListener("mousedown", Hold);
+  document.addEventListener("mouseup", () => {
+    cancelAnimationFrame(animationFrameId);
   });
 }
 
@@ -135,6 +146,10 @@ function ExitEditor() {
   const map = document.querySelector(".map");
   map.setAttribute("class", "map");
 
+  document.querySelectorAll(".recieverID").forEach((item) => {
+    item.style.visibility = "hidden";
+  });
+
   document.querySelectorAll(".object").forEach((item) => {
     item.removeEventListener("mousedown", Hold);
     console.log(item.classList);
@@ -154,15 +169,31 @@ function ExitEditor() {
 let animationFrameId;
 
 function Hold(e) {
-  const obj = e.target;
-  if (e.layerX > obj.offsetWidth - 5) {
+  const obj = e.currentTarget;
+  if (obj.classList == "mapbtn move") {
+    moveMap();
+  } else if (e.layerX > obj.offsetWidth - 6) {
     resizeObjectRight();
-  } else if (e.layerX < 5) {
+  } else if (e.layerX < 6) {
     resizeObjectLeft();
-  } else if (e.layerY > obj.offsetHeight - 5) {
+  } else if (e.layerY > obj.offsetHeight - 6) {
     resizeObjectBottom();
   } else {
     moveObject();
+  }
+
+  function moveMap() {
+    document.querySelectorAll(".object").forEach((item) => {
+      let newOffsetY = Math.round(
+        Number(window.getComputedStyle(item).top.split("p")[0]) + offsetY * 2
+      );
+      let newOffsetX = Math.round(
+        Number(window.getComputedStyle(item).left.split("p")[0]) + offsetX * 2
+      );
+      item.style.top = newOffsetY + "px";
+      item.style.left = newOffsetX + "px";
+    });
+    animationFrameId = requestAnimationFrame(moveMap);
   }
   function moveObject() {
     let newOffsetY = Math.round(
@@ -291,7 +322,6 @@ function AddNewBlock() {
   document.addEventListener("mouseup", () => {
     cancelAnimationFrame(animationFrameId);
   });
-  SnapToGrid();
 }
 
 let isEnabled = false;
@@ -361,7 +391,7 @@ function deleteBlocks(e) {
         )
       ) {
         item.classList = "devicecontainer";
-        console.log("here");
+
         item.setAttribute("draggable", "true");
         item.setAttribute("ondragstart", "drag(event)");
         item.style.cursor = "grab";
@@ -413,7 +443,13 @@ function Load() {
       reader.onload = function () {
         console.log(JSON.parse(reader.result));
         const obj = JSON.parse(reader.result);
-        document.querySelector(".map").innerHTML = "";
+        //here
+        document.querySelector(".map").innerHTML =
+          '<div class="mapcontrols"> <div class="mapbtn" onclick="zoom()">+</div> <div class="mapbtn move"> <svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512" > <!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --> <style> svg { fill: #ffffff; } </style> <path d="M278.6 9.4c-12.5-12.5-32.8-12.5-45.3 0l-64 64c-9.2 9.2-11.9 22.9-6.9 34.9s16.6 19.8 29.6 19.8h32v96H128V192c0-12.9-7.8-24.6-19.8-29.6s-25.7-2.2-34.9 6.9l-64 64c-12.5 12.5-12.5 32.8 0 45.3l64 64c9.2 9.2 22.9 11.9 34.9 6.9s19.8-16.6 19.8-29.6V288h96v96H192c-12.9 0-24.6 7.8-29.6 19.8s-2.2 25.7 6.9 34.9l64 64c12.5 12.5 32.8 12.5 45.3 0l64-64c9.2-9.2 11.9-22.9 6.9-34.9s-16.6-19.8-29.6-19.8H288V288h96v32c0 12.9 7.8 24.6 19.8 29.6s25.7 2.2 34.9-6.9l64-64c12.5-12.5 12.5-32.8 0-45.3l-64-64c-9.2-9.2-22.9-11.9-34.9-6.9s-19.8 16.6-19.8 29.6v32H288V128h32c12.9 0 24.6-7.8 29.6-19.8s2.2-25.7-6.9-34.9l-64-64z" /> </svg> </div> <div class="mapbtn" onclick="zoomOut()">-</div> </div>';
+        document.querySelector(".move").addEventListener("mousedown", Hold);
+        document.addEventListener("mouseup", () => {
+          cancelAnimationFrame(animationFrameId);
+        });
         obj.forEach((obj) => {
           const div = createElementFromHTML(obj);
           div.addEventListener("mousedown", Hold);
@@ -428,4 +464,42 @@ function Load() {
   });
 
   fileInput.click();
+}
+
+function zoom() {
+  zoomLevel *= 1.5;
+  document.querySelectorAll(".object").forEach((item) => {
+    item.style.height = item.clientHeight * 1.5 + "px";
+    item.style.width = item.clientWidth * 1.5 + "px";
+
+    var oldTop = Number(window.getComputedStyle(item).top.split("p")[0]);
+    var oldLeft = Number(window.getComputedStyle(item).left.split("p")[0]);
+
+    var newTop = oldTop * 1.5;
+    var newLeft = oldLeft * 1.5;
+
+    item.style.top = newTop + "px";
+    item.style.left = newLeft + "px";
+  });
+}
+
+function zoomOut() {
+  zoomLevel /= 1.5;
+  document.querySelectorAll(".object").forEach((item) => {
+    item.style.height = item.clientHeight / 1.5 + "px";
+    item.style.width = item.clientWidth / 1.5 + "px";
+
+    var oldTop = Number(window.getComputedStyle(item).top.split("p")[0]);
+    var oldLeft = Number(window.getComputedStyle(item).left.split("p")[0]);
+
+    var newTop = oldTop / 1.5;
+    var newLeft = oldLeft / 1.5;
+
+    item.style.top = newTop + "px";
+    item.style.left = newLeft + "px";
+  });
+}
+
+function moveMap() {
+  document.querySelector(".move").addEventListener("mousedown", Hold);
 }

@@ -38,7 +38,11 @@ header svg {
   transform: rotate(10deg);
   fill: #8338ec;
 }
-
+.svg,
+.path {
+  user-select: none;
+  pointer-events: none;
+}
 .button {
   font-weight: 600;
   display: flex;
@@ -344,4 +348,27 @@ div.height-measuring div {
 
 [draggable]:hover {
   cursor: grab;
+}
+
+.mapcontrols {
+  position: absolute;
+  right: 10px;
+  font-size: 3em;
+  text-align: center;
+  color: white;
+
+  z-index: 1000;
+}
+.mapbtn {
+  background-color: #8338eca9;
+  vertical-align: top;
+  margin-top: 0.3em;
+  width: 60px;
+}
+.move:hover {
+  cursor: grab;
+}
+.move svg {
+  margin-top: 0.3em;
+  width: 0.7em;
 }
