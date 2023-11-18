@@ -178,6 +178,8 @@ function Hold(e) {
     resizeObjectLeft();
   } else if (e.layerY > obj.offsetHeight - 6) {
     resizeObjectBottom();
+  } else if (e.layerY < 6) {
+    resizeObjectTop();
   } else {
     moveObject();
   }
@@ -218,6 +220,23 @@ function Hold(e) {
     }
 
     animationFrameId = requestAnimationFrame(resizeObjectBottom);
+  }
+
+  function resizeObjectTop() {
+    let newOffsetY = Math.round(
+      Number(window.getComputedStyle(obj).top.split("p")[0]) + offsetY
+    );
+    obj.querySelector(".measurement-height").textContent =
+      pxToM(obj.offsetHeight) + "m";
+    obj.style.top = newOffsetY + "px";
+    obj.style.height = Number(obj.offsetHeight + offsetY * -1) + "px";
+    animationFrameId = requestAnimationFrame(resizeObjectTop);
+
+    if (obj.offsetHeight > 60) {
+      obj.querySelector(".height-measuring").style.visibility = "visible";
+    } else {
+      obj.querySelector(".height-measuring").style.visibility = "hidden";
+    }
   }
   function resizeObjectRight() {
     obj.style.width = Number(obj.offsetWidth + offsetX) + "px";
@@ -327,6 +346,7 @@ function AddNewBlock() {
 let isEnabled = false;
 function deleteBlocks(e) {
   if (!isEnabled) {
+    document.querySelector(".mapcontrols").style.visibility = "hidden";
     isEnabled = true;
     e.classList += " delete";
     e.style.color = "#ffe205";
@@ -359,6 +379,7 @@ function deleteBlocks(e) {
       item.style.cursor = "crosshair";
     });
   } else {
+    document.querySelector(".mapcontrols").style.visibility = "visible";
     isEnabled = false;
     e.classList = "button";
     document.querySelectorAll('[class="button"]').forEach((item) => {
@@ -469,8 +490,10 @@ function Load() {
 function zoom() {
   zoomLevel *= 1.5;
   document.querySelectorAll(".object").forEach((item) => {
-    item.style.height = item.clientHeight * 1.5 + "px";
-    item.style.width = item.clientWidth * 1.5 + "px";
+    if (item.classList == "object hover") {
+      item.style.height = item.clientHeight * 1.5 + "px";
+      item.style.width = item.clientWidth * 1.5 + "px";
+    }
 
     var oldTop = Number(window.getComputedStyle(item).top.split("p")[0]);
     var oldLeft = Number(window.getComputedStyle(item).left.split("p")[0]);
@@ -486,8 +509,10 @@ function zoom() {
 function zoomOut() {
   zoomLevel /= 1.5;
   document.querySelectorAll(".object").forEach((item) => {
-    item.style.height = item.clientHeight / 1.5 + "px";
-    item.style.width = item.clientWidth / 1.5 + "px";
+    if (item.classList == "object hover") {
+      item.style.height = item.clientHeight / 1.5 + "px";
+      item.style.width = item.clientWidth / 1.5 + "px";
+    }
 
     var oldTop = Number(window.getComputedStyle(item).top.split("p")[0]);
     var oldLeft = Number(window.getComputedStyle(item).left.split("p")[0]);
