@@ -190,8 +190,6 @@ void setup() {
     isScanning=true;
     Serial.println("Proccesing new GET /scan");
     
-
-
     pBLEScan->start(0, nullptr, false);
 
     int64_t startTime = esp_timer_get_time();

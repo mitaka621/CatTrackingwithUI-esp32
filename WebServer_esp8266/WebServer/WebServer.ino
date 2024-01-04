@@ -176,6 +176,13 @@ void setup() {
   WiFi.begin(ssid, password);
   WiFi.config(staticIP, gateway, subnet);
 
+   if (!LittleFS.begin()) {
+    Serial.println("Failed to mount LittleFS");
+    return;
+  }
+
+  server.serveStatic("/", LittleFS, "/");
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");
@@ -297,8 +304,11 @@ void setup() {
   
   //first this endpoint has to be called (doesnt return nothing) and then /distances to get all of the calculated distances from all devices
   server.on("/start/scan", HTTPMethod::HTTP_GET, [&manager]() {
-    expectedRequests = 0;
-    currentRequests = 0;
+    if (currentRequests!=0) {
+    server.send(200,"plain/text","Scan initiated!");
+    return;
+    }
+ 
 
     IPAddress clientIP = server.client().remoteIP();
     Serial.printf("\n\n---Proccesing new GET /start/scan request from %s---\n", clientIP.toString().c_str());
@@ -315,10 +325,12 @@ void setup() {
       strcat(url, "/scan");
 
       requests[i].setDebug(false);
+      
       requests[i].onReadyStateChange(onRequestComplete);
       if (requests[i].open("GET", url)) {
         expectedRequests++;
         requests[i].send();
+        requests[i].setTimeout(10);
       } else {
         Serial.print("Error with device: ");
         Serial.println(manager.GetDevices()[i].id);
@@ -386,7 +398,7 @@ void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState)
     currentRequests++;
     Serial.println(request->responseHTTPString());
     Serial.print("Response: ");
-    String body = request->responseText();
+    char* body = request->responseLongText();
     Serial.println(body);
 
     StaticJsonDocument<200> doc;
