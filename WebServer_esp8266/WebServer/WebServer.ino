@@ -4,9 +4,7 @@
 #include <ESP8266HTTPClient.h>
 #include <LittleFS.h>
 #include <AsyncHTTPRequest_Generic.h>
-
-const char* ssid = "ditoge03";
-const char* password = "mitko111";
+#include <unordered_set>
 
 IPAddress staticIP(192, 168, 0, 9);  // Set the desired static IP address
 IPAddress gateway(192, 168, 0, 1);
@@ -61,9 +59,9 @@ public:
     return devices;
   }
 
-  //returns 1 if a device is succesfully added
-  //returns 0 if there is a validation error
-  //returns -1 if a device is already added
+  //returns 1 if a device is succesfully added;
+  //returns 0 if there is a validation error;
+  //returns -1 if a device is already added;
   int AddNewDevice(const char* Id, const char* Ip, const char* Type) {
     if (counter == numberDevices) {
       Serial.println("There is no more room for more devices!");
@@ -109,9 +107,9 @@ public:
     }
   }
 
-  //returns 1 if a device is registered
-  //returns 0 if a device is not registered
-  //returns -1 if the id is registered but the ip doesnt match
+  //returns 1 if a device is registered;
+  //returns 0 if a device is not registered;
+  //returns -1 if the id is registered but the ip doesnt match;
   int isDeviceRegistered(const char* Id, const char* Ip) {
     for (int i = 0; i < counter; i++) {
 
@@ -148,12 +146,11 @@ public:
       }
     }
   }
-  void resetDevice(const char* Id)
-  {
+  void resetDevice(const char* Id) {
     for (int i = 0; i < counter; i++) {
       if (strcmp(devices[i].id, Id) == 0) {
-          devices[i].distance=-1;
-          devices[i].avgRSSI=-1;
+        devices[i].distance = -1;
+        devices[i].avgRSSI = -1;
       }
     }
   }
@@ -166,22 +163,90 @@ public:
   }
 };
 
+class LogBuilder {
+};
+
+
+void loadBlacklistedIPs(std::unordered_set<std::string>& blacklistSet) {
+  // Open the JSON file containing blacklisted IPs
+  File blacklistFile = LittleFS.open("/blacklist.json", "r");
+  if (!blacklistFile) {
+    Serial.println("Failed to open blacklist file");
+    return;
+  }
+
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, blacklistFile);
+  if (error) {
+    Serial.println("Failed to parse blacklist file");
+    Serial.println(error.f_str());
+    blacklistFile.close();
+    return;
+  }
+
+  // Close the file
+  blacklistFile.close();
+
+  // Iterate through the JSON array and populate the unordered_set
+  for (const auto& element : doc.as<JsonArray>()) {
+
+    blacklistSet.insert(element.as<const char*>());
+  }
+}
+
+void addToBlacklistJSON(const char* newIP) {
+  const char* filename = "/blacklist.json";
+
+  // Open the existing blacklist file
+  File file = LittleFS.open(filename, "r+");
+  if (!file) {
+    Serial.println("Failed to open blacklist file");
+    return;
+  }
+
+  // Move to the end of the file (before the ']')
+  file.seek(file.size() - 1);
+
+  // If not the first IP, add a comma separator
+  if (file.size() > 3) {
+    file.print(',');
+  }
+
+  // Add the new IP to the JSON array
+  file.print("\"");
+  file.print(newIP);
+  file.print("\"]");
+
+  Serial.println("Added IP to blacklist successfully");
+  file.close();
+  Serial.printf("File:\n%s\n", LittleFS.open("/blacklist.json", "r").readString().c_str());
+}
+
 
 DeviceManager manager;
 int expectedRequests = 0;
 int currentRequests = 0;
+std::unordered_set<std::string> blacklistSet;
 void setup() {
   Serial.begin(115200);
-
-  WiFi.begin(ssid, password);
-  WiFi.config(staticIP, gateway, subnet);
-
-   if (!LittleFS.begin()) {
+  if (!LittleFS.begin()) {
     Serial.println("Failed to mount LittleFS");
     return;
   }
 
-  server.serveStatic("/", LittleFS, "/");
+  String configFile = LittleFS.open("/config.json", "r").readString();
+
+  JsonDocument config;
+  deserializeJson(config, configFile);
+  if (config.isNull()) {
+    Serial.printf("\n\nFailed to load config file! (data/config.json)");
+    return;
+  }
+  LittleFS.open("/config.json", "r").close();
+  Serial.printf("\nConfig loaded:\n%s\n", configFile.c_str());
+
+  WiFi.begin(config["ssid"].as<String>().c_str(), config["password"].as<String>().c_str());
+  //WiFi.config(staticIP, gateway, subnet);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -192,19 +257,30 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
+
+
+  //begining of server endpoints configuration:
+  server.serveStatic("/", LittleFS, "/UI/");
+
   server.on("/device", HTTPMethod::HTTP_POST, [&manager]() {
     IPAddress clientIP = server.client().remoteIP();
 
     Serial.printf("\n\n---Proccesing new POST /device request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("plain").c_str());
 
-    StaticJsonDocument<200> doc;
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, server.arg("plain"));
     if (!error) {
       // Extract data from the JSON
       if (!(doc.containsKey("DeviceId") && doc.containsKey("CurrentIP") && doc.containsKey("Type") && doc.size() == 3)) {
-        Serial.println("Invalid body of the request!");
         server.send(400);
-        doc.garbageCollect();
+        Serial.println("Invalid body of the request!");
+        blacklistSet.insert(clientIP.toString().c_str());
+        addToBlacklistJSON(clientIP.toString().c_str());
         return;
       }
 
@@ -216,46 +292,54 @@ void setup() {
         case -1:
           server.send(409);
           Serial.println("Conflicted occured");
-          doc.garbageCollect();
+
           return;
         case 0:
           server.send(400);
           Serial.printf("Could not add device - %s", doc["DeviceId"].as<String>().c_str());
-          doc.garbageCollect();
+
           return;
         default:
           Serial.println("Device succesfully added!");
           Serial.println("Current devices:");
           manager.Print();
           server.send(200);
-          doc.garbageCollect();
+
           ;
       }
     }
 
     else {
+      server.send(400);
       Serial.println(error.c_str());
       Serial.println("Failed to parse JSON");
-      server.send(400);
-      doc.garbageCollect();
+      blacklistSet.insert(clientIP.toString().c_str());
+      addToBlacklistJSON(clientIP.toString().c_str());
       return;
     }
   });
 
-  server.on("/status", HTTPMethod::HTTP_GET, [&manager]() {
+  server.on("/status", HTTP_GET, [&manager]() {
     IPAddress clientIP = server.client().remoteIP();
 
     Serial.printf("\n\n---Proccesing new GET /status request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("data").c_str());
 
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
 
     if (!server.hasArg("data")) {
       server.send(400);
       Serial.println("No data arg avalible");
 
+      blacklistSet.insert(clientIP.toString().c_str());
+      addToBlacklistJSON(clientIP.toString().c_str());
       return;
     }
 
-    StaticJsonDocument<200> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, server.arg("data"));
     if (!error) {
       // Extract data from the JSON
@@ -263,31 +347,32 @@ void setup() {
       if (!(doc.containsKey("Id") && doc.size() == 1)) {
         Serial.println("Invalid body of the request!");
         server.send(400);
-        doc.garbageCollect();
+        blacklistSet.insert(clientIP.toString().c_str());
+        addToBlacklistJSON(clientIP.toString().c_str());
         return;
       }
       switch (manager.isDeviceRegistered(doc["Id"].as<String>().c_str(), clientIP.toString().c_str())) {
         case 0:
           Serial.println("Device is NOT registered!");
           server.send(400);
-          doc.garbageCollect();
+
           return;
         case -1:
           Serial.println("Device Ip mismatch. It has to be regitered again!");
           manager.removeDevice(doc["Id"].as<String>().c_str());
           server.send(400);
-          doc.garbageCollect();
+
           return;
         default:
           server.send(200);
           Serial.println("Device is Registered");
-          doc.garbageCollect();
+
           return;
       }
       if (!manager.isDeviceRegistered(doc["Id"].as<String>().c_str(), clientIP.toString().c_str())) {
         Serial.println("Device is NOT registered!");
         server.send(400);
-        doc.garbageCollect();
+
         return;
       }
     }
@@ -296,27 +381,32 @@ void setup() {
       Serial.println(error.c_str());
       Serial.println("Failed to parse JSON");
       server.send(400);
-      doc.garbageCollect();
+      blacklistSet.insert(clientIP.toString().c_str());
+      addToBlacklistJSON(clientIP.toString().c_str());
       return;
     }
   });
 
-  
-  //first this endpoint has to be called (doesnt return nothing) and then /distances to get all of the calculated distances from all devices
-  server.on("/start/scan", HTTPMethod::HTTP_GET, [&manager]() {
-    if (currentRequests!=0) {
-    server.send(200,"plain/text","Scan initiated!");
-    return;
-    }
- 
 
+  //first this endpoint has to be called (returns nothing) and then /distances to get all of the calculated distances from all devices
+  server.on("/start/scan", HTTPMethod::HTTP_GET, [&manager,&expectedRequests]() {
     IPAddress clientIP = server.client().remoteIP();
+
     Serial.printf("\n\n---Proccesing new GET /start/scan request from %s---\n", clientIP.toString().c_str());
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+    if (expectedRequests != 0) {
+      server.send(200, "plain/text", "Scan initiated!");
+      return;
+    }
 
     Serial.println(manager.Count());
-    if (manager.Count()==0) {
-    server.send(405, "text/plain", "Error no devices.");
-    return;
+    if (manager.Count() == 0) {
+      server.send(405, "text/plain", "Error no devices.");
+      return;
     }
     for (int i = 0; i < manager.Count(); i++) {
       Serial.printf("Starting request number %d:\n", i);
@@ -325,7 +415,7 @@ void setup() {
       strcat(url, "/scan");
 
       requests[i].setDebug(false);
-      
+
       requests[i].onReadyStateChange(onRequestComplete);
       if (requests[i].open("GET", url)) {
         expectedRequests++;
@@ -339,8 +429,6 @@ void setup() {
 
     server.send(200);
     Serial.println("Waiting for all requests to complete.");
-
- 
   });
 
   server.on("/distances", HTTPMethod::HTTP_GET, [&manager, &currentRequests, &expectedRequests]() {
@@ -348,12 +436,16 @@ void setup() {
 
     Serial.printf("\n\n---Proccesing new POST /distances request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("plain").c_str());
 
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
     if (currentRequests == expectedRequests && currentRequests != 0) {
-      currentRequests=0;
-      expectedRequests=0;
+      currentRequests = 0;
+      expectedRequests = 0;
 
-      const int capacity = 20 * numberDevices;
-      StaticJsonDocument<capacity> doc;
+      JsonDocument doc;
       JsonArray array = doc.to<JsonArray>();
 
       for (int i = 0; i < manager.Count(); i++) {
@@ -370,7 +462,6 @@ void setup() {
       serializeJson(doc, jsonString);
       Serial.println(jsonString);
       server.send(200, "application/json", jsonString);
-      doc.garbageCollect();
       return;
     }
 
@@ -380,6 +471,9 @@ void setup() {
   });
   server.begin();
   Serial.println("HTTP server started");
+
+  //load all of the banned ips in a hashset
+  loadBlacklistedIPs(blacklistSet);
 
   // manager.AddNewDevice("1", "123.123.123.123", "ESP32");
   // manager.AddNewDevice("2", "123.123.123.123", "nekvodrugo");
@@ -392,7 +486,7 @@ void setup() {
 void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState) {
   (void)optParm;
 
-  
+
   if (readyState == readyStateDone) {
     Serial.print("Async request completed -> ");
     currentRequests++;
@@ -401,24 +495,24 @@ void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState)
     char* body = request->responseLongText();
     Serial.println(body);
 
-    StaticJsonDocument<200> doc;
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, body);
     if (!error) {
       // Extract data from the JSON
       if (!(doc.containsKey("id") && doc.containsKey("avgrssi") && doc.containsKey("distance") && doc.size() == 3)) {
         Serial.println("Invalid body of the request!");
-        doc.garbageCollect();
+
         return;
       }
 
       manager.addDistanceAndRSSIToDevice(doc["id"].as<String>().c_str(), doc["distance"].as<double>(), doc["avgrssi"].as<int>());
       server.send(200);
-      doc.garbageCollect();
+
 
     } else {
       Serial.println(error.c_str());
       Serial.println("Failed to parse JSON");
-      doc.garbageCollect();
+
       return;
     }
   }
