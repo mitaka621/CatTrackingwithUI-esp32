@@ -150,7 +150,7 @@ void CheckServerStatus() {
     http.begin(fullURL);
     int httpResponseCode = http.GET();
 
-    jsonDoc.garbageCollect();
+     
     if (httpResponseCode == 200) {
       Serial.println("Status OK");
       return;
@@ -216,7 +216,7 @@ void setup() {
 
     // Send JSON response
     server.send(200, "application/json", jsonString);
-    jsonDoc.garbageCollect();
+     
     isScanning=false;
   });
 
@@ -235,7 +235,7 @@ void loop() {
   }
 
   //if a minute has passed check if the main server is still active
-  if (isScanning==false&& esp_timer_get_time() - previuosTime >= 60000000) {
+  if (isScanning==false&& esp_timer_get_time() - previuosTime >= 10000000) {
     previuosTime = esp_timer_get_time();
     CheckServerStatus();
   }
