@@ -287,6 +287,63 @@ void setup() {
   if (debug)
     Serial.println(WiFi.localIP());
 
+  //endpoints configuration
+  server.on("/", HTTPMethod::HTTP_GET, []() {
+    File file = LittleFS.open("/UI/index.html", "r");
+    if (!file) {
+      server.send(404, "text/plain", "File not found");
+      return;
+    }
+
+    server.streamFile(file, "text/html");
+    file.close();
+  });
+
+  server.on("/styles.css", HTTPMethod::HTTP_GET, []() {
+    File file = LittleFS.open("/UI/styles.css", "r");
+    if (!file) {
+      server.send(404, "text/plain", "File not found");
+      return;
+    }
+
+    server.streamFile(file, "text/css");
+    file.close();
+  });
+
+  server.on("/editor.js", HTTPMethod::HTTP_GET, []() {
+    File file = LittleFS.open("/UI/editor.js", "r");
+    if (!file) {
+      server.send(404, "text/plain", "File not found");
+      return;
+    }
+
+    server.streamFile(file, "text/css");
+    file.close();
+  });
+
+  server.on("/editor.js", HTTPMethod::HTTP_GET, []() {
+    File file = LittleFS.open("/UI/editor.js", "r");
+    if (!file) {
+      server.send(404, "text/plain", "File not found");
+      return;
+    }
+
+    server.streamFile(file, "application/javascript");
+    file.close();
+  });
+
+  server.on("/sidemenu.js", HTTPMethod::HTTP_GET, []() {
+    File file = LittleFS.open("/UI/sidemenu.js", "r");
+    if (!file) {
+      server.send(404, "text/plain", "File not found");
+      return;
+    }
+
+    server.streamFile(file, "application/javascript");
+    file.close();
+  });
+
+
   server.on("/device", HTTPMethod::HTTP_POST, [&manager]() {
     IPAddress clientIP = server.client().remoteIP();
 
@@ -512,6 +569,9 @@ void setup() {
       Serial.printf("Still processing requests: %d/%d\n\n", currentRequests, expectedRequests);
     server.send(202);
   });
+
+
+
   server.begin();
   if (debug)
     Serial.println("HTTP server started");
@@ -520,11 +580,11 @@ void setup() {
   // manager.AddNewDevice("2", "123.123.123.123", "nekvodrugo");
   // manager.AddNewDevice("3", "123.123.123.123", "nekvodrugo");
   // if(debug)
-  Serial.println(manager.isDeviceRegistered("1", "123.123.123.123"));
+  //Serial.println(manager.isDeviceRegistered("1", "123.123.123.123"));
   // if(debug)
-  Serial.println(manager.isDeviceRegistered("1", "13.123.123.14"));
+  //Serial.println(manager.isDeviceRegistered("1", "13.123.123.14"));
   // if(debug)
-  Serial.println(manager.isDeviceRegistered("5", "13.123.123.14"));
+  //Serial.println(manager.isDeviceRegistered("5", "13.123.123.14"));
 }
 
 void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState) {
@@ -569,6 +629,7 @@ void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState)
   }
 }
 
+int64_t previuosTime = 0;
 void loop() {
   server.handleClient();
 }

@@ -205,7 +205,7 @@ void setup() {
     }
 
     // Create a JSON object
-    StaticJsonDocument<200> jsonDoc;
+    JsonDocument jsonDoc;
     // Add data to the JSON object
     jsonDoc["distance"] = roundedDistance;
     jsonDoc["avgrssi"] = avgRSSI;
@@ -235,7 +235,7 @@ void loop() {
   }
 
   //if a minute has passed check if the main server is still active
-  if (isScanning==false&& esp_timer_get_time() - previuosTime >= 10000000) {
+  if (isScanning==false&& esp_timer_get_time() - previuosTime >= 60000000) {
     previuosTime = esp_timer_get_time();
     CheckServerStatus();
   }
