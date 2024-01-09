@@ -197,8 +197,8 @@ void addToBlacklistJSON(const char* newIP) {
 
 
 DeviceManager manager;
-int expectedRequests = 0;
-int currentRequests = 0;
+int expectedRequests = 1;
+int currentRequests = 1;
 std::unordered_set<std::string> blacklistSet;
 void setup() {
   Serial.begin(115200);
@@ -483,47 +483,6 @@ void setup() {
   });
 
 
-  //first this endpoint has to be called (doesnt return nothing) and then /distances to get all of the calculated distances from all devices
-  server.on("/start/scan", HTTPMethod::HTTP_GET, [&manager]() {
-    expectedRequests = 0;
-    currentRequests = 0;
-
-    IPAddress clientIP = server.client().remoteIP();
-    if (debug)
-      Serial.printf("\n\n---Proccesing new GET /start/scan request from %s---\n", clientIP.toString().c_str());
-
-    if (debug)
-      Serial.println(manager.Count());
-    if (manager.Count() == 0) {
-      server.send(405, "text/plain", "Error no devices.");
-      return;
-    }
-    for (int i = 0; i < manager.Count(); i++) {
-      if (debug)
-        Serial.printf("Starting request number %d:\n", i);
-      char url[50] = "http://";
-      strcat(url, manager.GetDevices()[i].ip);
-      strcat(url, "/scan");
-
-      requests[i].setDebug(false);
-      requests[i].onReadyStateChange(onRequestComplete);
-      if (requests[i].open("GET", url)) {
-        expectedRequests++;
-        requests[i].send();
-        requests[i].setTimeout(10);
-      } else {
-        if (debug)
-          Serial.print("Error with device: ");
-        if (debug)
-          Serial.println(manager.GetDevices()[i].id);
-      }
-    }
-
-    server.send(200);
-    if (debug)
-      Serial.println("Waiting for all requests to complete.");
-  });
-
   server.on("/distances", HTTPMethod::HTTP_GET, [&manager, &currentRequests, &expectedRequests]() {
     IPAddress clientIP = server.client().remoteIP();
 
@@ -537,37 +496,27 @@ void setup() {
       return;
     }
 
-    if (currentRequests == expectedRequests && currentRequests != 0) {
-      currentRequests = 0;
-      expectedRequests = 0;
+    JsonDocument doc;
+    JsonArray array = doc.to<JsonArray>();
 
-
-      JsonDocument doc;
-      JsonArray array = doc.to<JsonArray>();
-
-      for (int i = 0; i < manager.Count(); i++) {
-        JsonObject obj = array.add<JsonObject>();
-        obj["id"] = manager.GetDevices()[i].id;
-        obj["type"] = manager.GetDevices()[i].type;
-        obj["distance"] = manager.GetDevices()[i].distance;
-        obj["avgRSSI"] = manager.GetDevices()[i].avgRSSI;
-
-        manager.resetDevice(manager.GetDevices()[i].id);
-      }
-
-      String jsonString;
-      serializeJson(doc, jsonString);
-      if (debug)
-        Serial.println(jsonString);
-      server.send(200, "application/json", jsonString);
-
-      return;
+    for (int i = 0; i < manager.Count(); i++) {
+      JsonObject obj = array.add<JsonObject>();
+      obj["id"] = manager.GetDevices()[i].id;
+      obj["type"] = manager.GetDevices()[i].type;
+      obj["distance"] = manager.GetDevices()[i].distance;
+      obj["avgRSSI"] = manager.GetDevices()[i].avgRSSI;
     }
 
-
+    String jsonString;
+    serializeJson(doc, jsonString);
     if (debug)
-      Serial.printf("Still processing requests: %d/%d\n\n", currentRequests, expectedRequests);
-    server.send(202);
+      Serial.println(jsonString);
+
+    if (jsonString.isEmpty()) {
+      server.send(500);
+      return;
+    }
+    server.send(200, "application/json", jsonString);
   });
 
 
@@ -587,9 +536,8 @@ void setup() {
   //Serial.println(manager.isDeviceRegistered("5", "13.123.123.14"));
 }
 
-void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState) {
-  (void)optParm;
 
+void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState) {
 
   if (readyState == readyStateDone) {
     if (debug)
@@ -597,6 +545,13 @@ void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState)
     currentRequests++;
     if (debug)
       Serial.println(request->responseHTTPString());
+
+    if (request->responseHTTPString() == "NOT_CONNECTED") {
+      Serial.print("Removing device: ");
+      Serial.println(Id);
+      manager.removeDevice(Id);
+      return;
+    }
     if (debug)
       Serial.print("Response: ");
     String body = request->responseText();
@@ -621,15 +576,63 @@ void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState)
     } else {
       if (debug)
         Serial.println(error.c_str());
-      if (debug)
-        Serial.println("Failed to parse JSON");
+      if (debug) {
+        Serial.print("Failed to parse JSON - ");
+        Serial.println(Id);
+      }
+      manager.resetDevice(Id);
 
       return;
     }
   }
 }
 
-int64_t previuosTime = 0;
+
 void loop() {
   server.handleClient();
+
+  if (currentRequests == expectedRequests && currentRequests != 0 && manager.Count() >= 2) {
+
+    expectedRequests = 0;
+    currentRequests = 0;
+
+    IPAddress clientIP = server.client().remoteIP();
+    if (debug)
+      Serial.println("---Starting new scan---");
+
+    if (debug)
+      Serial.println(manager.Count());
+    if (manager.Count() == 0) {
+      server.send(405, "text/plain", "Error no devices.");
+      return;
+    }
+    for (int i = 0; i < manager.Count(); i++) {
+      if (debug)
+        Serial.printf("Starting request number %d:\n", i);
+      char url[50] = "http://";
+      strcat(url, manager.GetDevices()[i].ip);
+      strcat(url, "/scan");
+
+      const char* id = manager.GetDevices()[i].id;
+
+      requests[i].setDebug(false);
+      requests[i].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
+        onRequestComplete(id, request, readyState);
+      });
+      if (requests[i].open("GET", url)) {
+        expectedRequests++;
+        requests[i].send();
+        requests[i].setTimeout(10);
+      } else {
+        if (debug)
+          Serial.print("Error with device: ");
+        if (debug)
+          Serial.println(manager.GetDevices()[i].id);
+      }
+    }
+
+    server.send(200);
+    if (debug)
+      Serial.println("Waiting for all requests to complete.");
+  }
 }
