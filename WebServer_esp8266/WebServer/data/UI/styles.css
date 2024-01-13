@@ -31,12 +31,13 @@ header > span {
   margin-left: 2em;
   margin-top: -0.5em;
 }
-header svg {
-  margin-bottom: -1.35em;
-  margin-right: -1.1em;
+header img {
+  margin-bottom: -1.8em;
+  margin-right: -1.2em;
   -webkit-transform: rotate(10deg);
   transform: rotate(10deg);
-  fill: #8338ec;
+ 
+  width: 3em;
 }
 .svg,
 .path {
@@ -157,7 +158,6 @@ main {
   flex-wrap: wrap;
   flex-direction: column;
   align-items: center;
-  border: 3px solid #ffe205;
   background-color: #ffe205;
   margin: 1em 2em;
   border-radius: 2em;
@@ -189,9 +189,10 @@ main {
 }
 .sidemenu h2 {
   width: 100%;
-  margin: 0 0 0.5em 0;
+  margin: 0.2em 0 0 0;
+  font-size: 2em;
   text-align: center;
-  border-bottom: 2px solid#8338EC;
+  
 }
 .sidemenu p {
   padding: 0 0.5em 0.5em 0.5em;
@@ -316,21 +317,35 @@ div.height-measuring div {
   margin-bottom: 0.4em;
 }
 
+.devicecontainer.inactive {
+  background-color: #7e8788;
+  border-color: #7e8788;
+}
+
 /*  */
 
 .devicecontainer .online {
-  font-size: 2em;
-  color: #00ff6e;
-  font-weight: 800;
-  -webkit-text-stroke-width: 1px;
-  -webkit-text-stroke-color: black;
+  width: 100%;
+  background: rgb(131,56,236);
+  background: linear-gradient(123deg, rgba(131,56,236,1) 0%, rgba(49,233,129,1) 41%); 
+  margin: 0 0 1em 0;
+  padding: 0;
+  font-weight: 600;
 }
 
 .devicecontainer .offline {
-  font-size: 2em;
-  color: #ff0000;
-  font-weight: 800;
+  width: 100%;
+  background: rgb(131,56,236);
+  background: linear-gradient(158deg, rgba(131,56,236,1) 0%, rgba(233,49,53,1) 56%); 
+  margin: 0 0 1em 0;
+  padding: 0;
+  font-weight: 600;
+  color: white;
 }
+.devicecontainer.offline{
+  background-color: #c5c5c2;
+ 
+} 
 
 .level2 {
   background-color: #f89524;
@@ -341,10 +356,7 @@ div.height-measuring div {
   color: white;
 }
 
-.inactive {
-  background-color: #7e8788;
-  border-color: #7e8788;
-}
+
 
 [draggable]:hover {
   cursor: grab;
@@ -372,3 +384,89 @@ div.height-measuring div {
   margin-top: 0.3em;
   width: 0.7em;
 }
+
+.distanceAndRSSI{
+  display: flex;
+  width: 100%;
+  margin-bottom: 1em;
+}
+.distanceAndRSSI p:nth-child(1){
+  border-right: 2px solid black;
+}
+.distanceAndRSSI p:nth-child(2){
+  border-left: 2px solid black;
+}
+.distanceAndRSSI p{
+  
+  flex-basis: 50%;
+  font-size: 2em;
+}
+.distanceAndRSSI span{
+  font-weight: 600;
+  display: block;
+}
+
+p.type{
+  padding: 0;
+  margin-bottom: 0.5em;
+  font-size: 1em;
+  
+}
+p.signalstr{
+  border-bottom: 1px solid black;
+  padding:0;
+}
+p.signalstr:hover{
+  cursor: pointer;
+}
+p.signalstr:hover ~ a.calibrate-button,a.calibrate-button:hover {
+  
+  cursor: pointer;
+  transition:  max-height 2s,padding 0.4s;
+  max-height: 500px;
+  padding: 0.1em 1.4em;
+}
+
+a.calibrate-button {
+  overflow: hidden;
+  transition:  max-height 0.4s,padding 0.4s;
+  font-size: 1.4em;
+  color: white;
+  background-color: #8338ec;
+  padding: 0;
+  border-end-end-radius: 20px;
+  border-end-start-radius: 20px;
+  max-height: 0;
+}
+.accept-cancel-container a{
+  display: block;
+  max-height: 0;
+  font-size: 1.4em;
+  border-end-end-radius: 10px;
+  border-end-start-radius: 10px;
+  padding: 0.1em 0.3em;
+  transition: all 1s;
+}
+.accept-cancel-container{
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 0.3em  ;
+}
+a.accept-btn{
+  background-color: #8338ec;
+  color: white;
+  padding: 0.1em 0.5em;
+  transition: all 1s;
+}
+
+a.cancel-btn{
+  background-color: rgba(255, 0, 0, 0.774);
+  color: white;
+  transition: all 1s;
+}
+a.accept-btn:hover, a.cancel-btn:hover{
+  cursor: pointer;
+}
+
+

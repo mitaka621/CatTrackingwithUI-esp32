@@ -1,7 +1,6 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ArduinoJson.h>
-#include <ESP8266HTTPClient.h>
 #include <LittleFS.h>
 #include <AsyncHTTPRequest_Generic.h>
 #include <unordered_set>
@@ -28,6 +27,7 @@ struct Device {
   char type[typeLength];
   double distance = -1;
   int avgRSSI = -1;
+  int RSSI1m = -1;
 
   // Constructor that initializes Device with provided values
   Device() {}
@@ -111,6 +111,15 @@ public:
     }
   }
 
+  bool isDeviceRegistered(const char* Id) {
+    for (int i = 0; i < counter; i++) {
+      if (strcmp(devices[i].id, Id) == 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   //returns 1 if a device is registered
   //returns 0 if a device is not registered
   //returns -1 if the id is registered but the ip doesnt match
@@ -141,20 +150,32 @@ public:
     return false;
   }
 
-  void addDistanceAndRSSIToDevice(const char* Id, double distance, int rssi) {
+  void addDistanceAndRSSIToDevice(const char* Id, double distance, int rssi, int rssi1m) {
     for (int i = 0; i < counter; i++) {
       if (strcmp(devices[i].id, Id) == 0) {
         devices[i].distance = distance;
         devices[i].avgRSSI = rssi;
+        devices[i].RSSI1m = rssi1m;
         return;
       }
     }
   }
+
+  void add1mRSSI(const char* Id, int newrssi) {
+    for (int i = 0; i < counter; i++) {
+      if (strcmp(devices[i].id, Id) == 0) {
+        devices[i].RSSI1m = newrssi;
+        return;
+      }
+    }
+  }
+
   void resetDevice(const char* Id) {
     for (int i = 0; i < counter; i++) {
       if (strcmp(devices[i].id, Id) == 0) {
         devices[i].distance = -1;
         devices[i].avgRSSI = -1;
+        devices[i].RSSI1m = -1;
       }
     }
   }
@@ -164,7 +185,7 @@ public:
       Serial.println(counter);
     for (int i = 0; i < counter; i++) {
       if (debug)
-        Serial.printf("%s(%s) - %s; Distance: %f\n", devices[i].id, devices[i].type, devices[i].ip, devices[i].distance);
+        Serial.printf("%s(%s) - %s; Distance: %f; RSSI at 1m:%d\n", devices[i].id, devices[i].type, devices[i].ip, devices[i].distance, devices[i].RSSI1m);
     }
   }
 };
@@ -197,6 +218,7 @@ void addToBlacklistJSON(const char* newIP) {
 
 
 DeviceManager manager;
+bool CalibrationBegin = false;
 int expectedRequests = 1;
 int currentRequests = 1;
 std::unordered_set<std::string> blacklistSet;
@@ -289,6 +311,14 @@ void setup() {
 
   //endpoints configuration
   server.on("/", HTTPMethod::HTTP_GET, []() {
+    IPAddress clientIP = server.client().remoteIP();
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
     File file = LittleFS.open("/UI/index.html", "r");
     if (!file) {
       server.send(404, "text/plain", "File not found");
@@ -300,6 +330,14 @@ void setup() {
   });
 
   server.on("/styles.css", HTTPMethod::HTTP_GET, []() {
+    IPAddress clientIP = server.client().remoteIP();
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
     File file = LittleFS.open("/UI/styles.css", "r");
     if (!file) {
       server.send(404, "text/plain", "File not found");
@@ -311,35 +349,79 @@ void setup() {
   });
 
   server.on("/editor.js", HTTPMethod::HTTP_GET, []() {
+    IPAddress clientIP = server.client().remoteIP();
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
     File file = LittleFS.open("/UI/editor.js", "r");
     if (!file) {
       server.send(404, "text/plain", "File not found");
       return;
     }
 
-    server.streamFile(file, "text/css");
+    server.streamFile(file, "text/javascript");
     file.close();
   });
 
-  server.on("/editor.js", HTTPMethod::HTTP_GET, []() {
-    File file = LittleFS.open("/UI/editor.js", "r");
-    if (!file) {
-      server.send(404, "text/plain", "File not found");
-      return;
-    }
-
-    server.streamFile(file, "application/javascript");
-    file.close();
-  });
 
   server.on("/sidemenu.js", HTTPMethod::HTTP_GET, []() {
+    IPAddress clientIP = server.client().remoteIP();
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
     File file = LittleFS.open("/UI/sidemenu.js", "r");
+    if (!file) {
+      server.send(404, "text/javascript", "File not found");
+      return;
+    }
+
+    server.streamFile(file, "application/javascript");
+    file.close();
+  });
+
+  server.on("/loadData.js", HTTPMethod::HTTP_GET, []() {
+    IPAddress clientIP = server.client().remoteIP();
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
+    File file = LittleFS.open("/UI/loadData.js", "r");
     if (!file) {
       server.send(404, "text/plain", "File not found");
       return;
     }
 
     server.streamFile(file, "application/javascript");
+    file.close();
+  });
+
+  server.on("/resources/cattt.svg", HTTPMethod::HTTP_GET, []() {
+    IPAddress clientIP = server.client().remoteIP();
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
+    File file = LittleFS.open("/UI/resources/cattt.svg", "r");
+    if (!file) {
+      server.send(404, "text/plain", "File not found");
+      return;
+    }
+
+    server.streamFile(file, "image/svg+xml");
     file.close();
   });
 
@@ -411,11 +493,11 @@ void setup() {
     }
   });
 
-  server.on("/status", HTTPMethod::HTTP_GET, [&manager]() {
+  server.on("/status", HTTPMethod::HTTP_POST, [&manager]() {
     IPAddress clientIP = server.client().remoteIP();
 
     if (debug)
-      Serial.printf("\n\n---Proccesing new GET /status request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("data").c_str());
+      Serial.printf("\n\n---Proccesing new POST /status request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("plain").c_str());
 
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -424,7 +506,7 @@ void setup() {
       return;
     }
 
-    if (!server.hasArg("data")) {
+    if (!server.hasArg("plain")) {
       server.send(400);
       if (debug)
         Serial.println("No data arg avalible");
@@ -434,7 +516,7 @@ void setup() {
     }
 
     JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, server.arg("data"));
+    DeserializationError error = deserializeJson(doc, server.arg("plain").c_str());
     if (!error) {
       // Extract data from the JSON
 
@@ -505,6 +587,7 @@ void setup() {
       obj["type"] = manager.GetDevices()[i].type;
       obj["distance"] = manager.GetDevices()[i].distance;
       obj["avgRSSI"] = manager.GetDevices()[i].avgRSSI;
+      obj["rssi1m"] = manager.GetDevices()[i].RSSI1m;
     }
 
     String jsonString;
@@ -519,6 +602,239 @@ void setup() {
     server.send(200, "application/json", jsonString);
   });
 
+  server.on("/calibrationStatus", HTTP_POST, [&manager, &CalibrationBegin]() {
+    IPAddress clientIP = server.client().remoteIP();
+
+    if (debug)
+      Serial.printf("\n\n---Proccesing new POST /calibrate request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("plain").c_str());
+
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, server.arg("plain"));
+    if (!error) {
+      // Extract data from the JSON
+      if (!(doc.containsKey("Id") && doc.size() == 1)) {
+        if (debug)
+          Serial.println("Invalid body of the request!");
+        server.send(400);
+        blacklistSet.insert(clientIP.toString().c_str());
+        addToBlacklistJSON(clientIP.toString().c_str());
+        return;
+      }
+
+      if (manager.isDeviceRegistered(doc["Id"].as<String>().c_str())) {
+        CalibrationBegin = true;
+
+        for (int i = 0; i < manager.Count(); i++) {
+          if (strcmp(manager.GetDevices()[i].id, doc["Id"].as<String>().c_str()) == 0) {
+
+            char url[50] = "http://";
+            strcat(url, manager.GetDevices()[i].ip);
+            strcat(url, "/blinkOn");
+
+            Serial.print("Sending a GET /blinkOn request to ");
+            Serial.println(url);
+
+            requests[numberDevices].setDebug(false);
+            requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {});
+            while (!requests[numberDevices].open("GET", url)) {
+              Serial.println("Wating for reqest to open");
+            }
+            requests[numberDevices].send();
+            server.send(200);
+            return;
+          }
+        }
+
+        if (debug)
+          Serial.println("Error-device cannot be found!");
+        CalibrationBegin = false;
+        server.send(404);
+
+      } else {
+        if (debug)
+          Serial.println("Error-device is no longer added!");
+        server.send(404);
+      }
+    } else {
+      if (debug)
+        Serial.println(error.c_str());
+      if (debug)
+        Serial.println("Failed to parse JSON");
+      server.send(400);
+      blacklistSet.insert(clientIP.toString().c_str());
+      addToBlacklistJSON(clientIP.toString().c_str());
+    }
+  });
+
+  server.on("/startCalibration", HTTP_POST, [&manager, &CalibrationBegin]() {
+    IPAddress clientIP = server.client().remoteIP();
+
+    if (debug)
+      Serial.printf("\n\n---Proccesing new POST /calibrate request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("plain").c_str());
+
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
+    if (!CalibrationBegin) {
+      Serial.println("Cannot start calibration without first invoking POST /calibrationStatus");
+      server.send(400);
+      return;
+    }
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, server.arg("plain"));
+    if (!error) {
+      // Extract data from the JSON
+      if (!(doc.containsKey("Id") && doc.size() == 1)) {
+        if (debug)
+          Serial.println("Invalid body of the request!");
+        server.send(400);
+        blacklistSet.insert(clientIP.toString().c_str());
+        addToBlacklistJSON(clientIP.toString().c_str());
+        return;
+      }
+
+      if (!manager.isDeviceRegistered(doc["Id"].as<String>().c_str())) {
+        if (debug)
+          Serial.println("Error-device is no longer added!");
+        server.send(404);
+        return;
+      }
+
+      for (int i = 0; i < manager.Count(); i++) {
+        if (strcmp(manager.GetDevices()[i].id, doc["Id"].as<String>().c_str()) == 0) {
+
+          char url[50] = "http://";
+          strcat(url, manager.GetDevices()[i].ip);
+          strcat(url, "/beginCalibration");
+
+          Serial.print("Sending a GET /beginCalibration request to ");
+          Serial.println(url);
+
+          requests[numberDevices].setDebug(false);
+          const char* id = doc["Id"].as<String>().c_str();
+          requests[numberDevices].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
+            onCalibrationComplete(id, request, readyState);
+          });
+
+          while (!requests[numberDevices].open("GET", url)) {
+            Serial.println("Wating for requests to open");
+          }
+
+          requests[numberDevices].send();
+          requests[numberDevices].setTimeout(10);
+
+          server.send(200);
+          return;
+        }
+      }
+
+      Serial.print("Could not locate device!");
+      server.send(404);
+      return;
+
+
+    } else {
+      if (debug)
+        Serial.println(error.c_str());
+      if (debug)
+        Serial.println("Failed to parse JSON");
+      server.send(400);
+      blacklistSet.insert(clientIP.toString().c_str());
+      addToBlacklistJSON(clientIP.toString().c_str());
+    }
+  });
+
+  server.on("/stopCalibration", HTTP_POST, [&manager, &CalibrationBegin]() {
+    IPAddress clientIP = server.client().remoteIP();
+
+    if (debug)
+      Serial.printf("\n\n---Proccesing new POST /stopCalibration request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("plain").c_str());
+
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
+    if (!CalibrationBegin) {
+      Serial.println("Cannot stop calibration if it has not yet began!");
+      server.send(405);
+      return;
+    }
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, server.arg("plain"));
+    if (!error) {
+      // Extract data from the JSON
+      if (!(doc.containsKey("Id") && doc.size() == 1)) {
+        if (debug)
+          Serial.println("Invalid body of the request!");
+        server.send(400);
+        blacklistSet.insert(clientIP.toString().c_str());
+        addToBlacklistJSON(clientIP.toString().c_str());
+        return;
+      }
+
+      CalibrationBegin = false;
+      if (manager.isDeviceRegistered(doc["Id"].as<String>().c_str())) {
+
+        for (int i = 0; i < manager.Count(); i++) {
+          if (strcmp(manager.GetDevices()[i].id, doc["Id"].as<String>().c_str()) == 0) {
+
+            char url[50] = "http://";
+            strcat(url, manager.GetDevices()[i].ip);
+            strcat(url, "/blinkOff");
+
+            Serial.print("Sending a GET /blinkOff request to ");
+            Serial.println(url);
+
+            requests[numberDevices].setDebug(false);
+            requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {});
+
+            while (!requests[numberDevices].open("GET", url)) {
+              Serial.println("Wating for the request to open");
+            }
+
+            requests[numberDevices].send();
+            Serial.println("Calibration canceled!");
+            server.send(200);
+            return;
+          }
+        }
+
+        if (debug)
+          Serial.println("Error-device cannot be found!");
+        CalibrationBegin = false;
+        server.send(404);
+
+      } else {
+        if (debug)
+          Serial.println("Error-device is no longer added!");
+        server.send(404);
+      }
+    } else {
+      if (debug)
+        Serial.println(error.c_str());
+      if (debug)
+        Serial.println("Failed to parse JSON");
+      server.send(400);
+      blacklistSet.insert(clientIP.toString().c_str());
+      addToBlacklistJSON(clientIP.toString().c_str());
+    }
+  });
 
 
   server.begin();
@@ -538,23 +854,23 @@ void setup() {
 
 
 void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState) {
-
   if (readyState == readyStateDone) {
     if (debug)
       Serial.print("Async request completed -> ");
-    currentRequests++;
+
     if (debug)
       Serial.println(request->responseHTTPString());
 
-    if (request->responseHTTPString() == "NOT_CONNECTED") {
+    if (request->responseHTTPString() == "NOT_CONNECTED" || request->responseHTTPString() == "TIMEOUT") {
       Serial.print("Removing device: ");
       Serial.println(Id);
       manager.removeDevice(Id);
+      currentRequests++;
       return;
     }
     if (debug)
       Serial.print("Response: ");
-    String body = request->responseText();
+    char* body = request->responseLongText();
     if (debug)
       Serial.println(body);
 
@@ -562,25 +878,78 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
     DeserializationError error = deserializeJson(doc, body);
     if (!error) {
       // Extract data from the JSON
-      if (!(doc.containsKey("id") && doc.containsKey("avgrssi") && doc.containsKey("distance") && doc.size() == 3)) {
+      if (!(doc.containsKey("id") && doc.containsKey("avgrssi") && doc.containsKey("distance") && doc.containsKey("rssi1m") && doc.size() == 4)) {
         if (debug)
           Serial.println("Invalid body of the request!");
 
         return;
       }
 
-      manager.addDistanceAndRSSIToDevice(doc["id"].as<String>().c_str(), doc["distance"].as<double>(), doc["avgrssi"].as<int>());
-      server.send(200);
+      manager.addDistanceAndRSSIToDevice(doc["id"].as<String>().c_str(), doc["distance"].as<double>(), doc["avgrssi"].as<int>(), doc["rssi1m"].as<int>());
 
-
+      currentRequests++;
     } else {
+      currentRequests++;
       if (debug)
         Serial.println(error.c_str());
       if (debug) {
         Serial.print("Failed to parse JSON - ");
         Serial.println(Id);
       }
-      manager.resetDevice(Id);
+
+      return;
+    }
+  }
+}
+
+void onCalibrationComplete(const char* Id, AsyncHTTPRequest* request, int readyState) {
+  if (readyState == readyStateDone) {
+    if (debug)
+      Serial.print("Calibration request completed -> ");
+
+    if (debug)
+      Serial.println(request->responseHTTPString());
+
+    if (debug)
+      Serial.print("Response: ");
+    char* body = request->responseLongText();
+    if (debug)
+      Serial.println(body);
+
+    if (request->responseHTTPcode() == 404) {
+      Serial.println("Couldnt calibrate! Beacon out of range!");
+      CalibrationBegin = false;
+      return;
+    }
+
+    if (request->responseHTTPcode() == 405) {
+      Serial.println("Calibration not initialized!");
+      return;
+    }
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, body);
+    if (!error) {
+      // Extract data from the JSON
+      if (!(doc.containsKey("rssi1m") && doc.size() == 1)) {
+        if (debug)
+          Serial.println("Invalid body of the request!");
+        return;
+      }
+
+      manager.add1mRSSI(Id, doc["rssi1m"].as<int>());
+      CalibrationBegin = false;
+      return;
+
+
+    } else {
+      CalibrationBegin = false;
+      if (debug)
+        Serial.println(error.c_str());
+      if (debug) {
+        Serial.print("Failed to parse JSON - ");
+        Serial.println(Id);
+      }
 
       return;
     }
@@ -591,21 +960,18 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
 void loop() {
   server.handleClient();
 
-  if (currentRequests == expectedRequests && currentRequests != 0 && manager.Count() >= 2) {
+  //if no curretn scan is active begin scanning for the beacon
+
+  if (currentRequests == expectedRequests && currentRequests != 0 && manager.Count() > 0 && !CalibrationBegin) {
 
     expectedRequests = 0;
     currentRequests = 0;
 
-    IPAddress clientIP = server.client().remoteIP();
     if (debug)
       Serial.println("---Starting new scan---");
 
     if (debug)
       Serial.println(manager.Count());
-    if (manager.Count() == 0) {
-      server.send(405, "text/plain", "Error no devices.");
-      return;
-    }
     for (int i = 0; i < manager.Count(); i++) {
       if (debug)
         Serial.printf("Starting request number %d:\n", i);
@@ -619,19 +985,14 @@ void loop() {
       requests[i].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
         onRequestComplete(id, request, readyState);
       });
-      if (requests[i].open("GET", url)) {
-        expectedRequests++;
-        requests[i].send();
-        requests[i].setTimeout(10);
-      } else {
-        if (debug)
-          Serial.print("Error with device: ");
-        if (debug)
-          Serial.println(manager.GetDevices()[i].id);
+      while (!requests[i].open("GET", url)) {
+        Serial.println("Wating for requests to open");
       }
+      expectedRequests++;
+      requests[i].send();
+      requests[i].setTimeout(10);
     }
 
-    server.send(200);
     if (debug)
       Serial.println("Waiting for all requests to complete.");
   }

@@ -33,6 +33,13 @@ function pxToM(px, modifier = 0.015) {
   ).toFixed(1);
 }
 
+function Mtopx(px, modifier = 0.015) {
+  return (
+    (px / modifier) *
+    (zoomLevel < 0 ? 1 / (zoomLevel * -1) : zoomLevel)
+  ).toFixed(1);
+}
+
 function EditMap() {
   const btn = document.querySelector(".button");
 
@@ -63,13 +70,15 @@ function EditMap() {
 
   const placedDevices = Array.from(document.querySelectorAll(".recieverID"));
   document.querySelectorAll(".devicecontainer").forEach((item) => {
+   
     if (
       !placedDevices.find((x) => x.textContent === item.children[0].textContent)
     ) {
       item.setAttribute("draggable", "true");
       item.setAttribute("ondragstart", "drag(event)");
-      item.style.cursor = "drag";
+      item.style.cursor = "";
     } else {
+      item.classList.remove("offline");
       item.classList += " inactive";
     }
   });
@@ -128,6 +137,11 @@ function ExitEditor() {
     btn.style.maxWidth = "41px";
   }, 300);
   document.querySelectorAll(".devicecontainer").forEach((item) => {
+  
+    if (item.children[1].classList.value==="offline") {
+      item.classList="devicecontainer offline";
+    }
+    else
     item.classList = "devicecontainer";
     item.style.cursor = "auto";
     item.setAttribute("draggable", "null");
@@ -152,7 +166,6 @@ function ExitEditor() {
 
   document.querySelectorAll(".object").forEach((item) => {
     item.removeEventListener("mousedown", Hold);
-    console.log(item.classList);
     if (item.classList[1] !== "reciever") {
       item.classList = "object";
       item.innerHTML = "";
@@ -310,7 +323,7 @@ function drop(ev) {
   const deviceDiv = Array.from(
     document.querySelectorAll(".devicecontainer")
   ).find((x) => x.children[0].textContent === transferdData);
-  deviceDiv.classList += " inactive";
+  deviceDiv.classList = "inactive devicecontainer";
   deviceDiv.removeAttribute("draggable");
   deviceDiv.removeAttribute("ondragstart");
 
@@ -358,7 +371,9 @@ function deleteBlocks(e) {
       if (!String(item.classList).includes("inactive"))
         item.setAttribute("draggable", "null");
       item.setAttribute("ondragstart", "null");
-      item.classList += " inactive";
+      if ( !item.classList.contains("inactive")) {
+        item.classList += " inactive";
+      }     
       item.style.cursor = "auto";
     });
     document.querySelectorAll(".object").forEach((item) => {
@@ -411,7 +426,11 @@ function deleteBlocks(e) {
           (x) => x.textContent === item.children[0].textContent
         )
       ) {
-        item.classList = "devicecontainer";
+        item.classList.remove("inactive");
+
+        if (item.querySelector("p.offline")) {
+          item.classList+=" offline";
+        }
 
         item.setAttribute("draggable", "true");
         item.setAttribute("ondragstart", "drag(event)");
@@ -462,7 +481,6 @@ function Load() {
     if (file.name.match(/\.(txt|json)$/)) {
       var reader = new FileReader();
       reader.onload = function () {
-        console.log(JSON.parse(reader.result));
         const obj = JSON.parse(reader.result);
         //here
         document.querySelector(".map").innerHTML =
@@ -490,10 +508,10 @@ function Load() {
 function zoom() {
   zoomLevel *= 1.5;
   document.querySelectorAll(".object").forEach((item) => {
-    if (item.classList == "object hover") {
+    
       item.style.height = item.clientHeight * 1.5 + "px";
       item.style.width = item.clientWidth * 1.5 + "px";
-    }
+    
 
     var oldTop = Number(window.getComputedStyle(item).top.split("p")[0]);
     var oldLeft = Number(window.getComputedStyle(item).left.split("p")[0]);
@@ -509,10 +527,10 @@ function zoom() {
 function zoomOut() {
   zoomLevel /= 1.5;
   document.querySelectorAll(".object").forEach((item) => {
-    if (item.classList == "object hover") {
+   
       item.style.height = item.clientHeight / 1.5 + "px";
       item.style.width = item.clientWidth / 1.5 + "px";
-    }
+    
 
     var oldTop = Number(window.getComputedStyle(item).top.split("p")[0]);
     var oldLeft = Number(window.getComputedStyle(item).left.split("p")[0]);

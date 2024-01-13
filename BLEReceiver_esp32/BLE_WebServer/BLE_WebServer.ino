@@ -4,7 +4,7 @@
 #include <WebServer.h>
 #include <ArduinoJson.h>
 
-const char *DeviceId = "2";
+const char *DeviceId = "on top of pc";
 const char *DeviceType = "ESP32";
 
 
@@ -16,15 +16,16 @@ const char *ServerAddress = "http://192.168.0.9/";
 //mac address for the BLE beacon
 const char beaconMAC[] = "e9:65:3c:b5:99:c1";
 
-const int txPower = -44;  // Reference TxPower (RSSI) in dBm at 1 meter distance
-const int N = 2;          //const from 2 to 4 for accuracy
+int txPower = -44;  // Reference TxPower (RSSI) in dBm at 1 meter distance
+const int N = 2;    //const from 2 to 4 for accuracy
 
 NimBLEScan *pBLEScan;
-const int RSSIsampleSize = 20;
+const int RSSIsampleSize = 10;
 int RSSIArr[RSSIsampleSize];
 int arrCount = 0;
 double distance;
 
+#define LED 2
 
 int compareAscending(const void *a, const void *b) {
   return (*(int *)b - *(int *)a);
@@ -62,12 +63,12 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
 
 
       distance = pow(10, (txPower - avgRSSI) / (10.0 * N));
-      Serial.print("Distance (estimated): ");
-      Serial.println(distance);
+      //Serial.print("Distance (estimated): ");
+      //Serial.println(distance);
 
-      Serial.print("Rounded distance (Real): ");
+     // Serial.print("Rounded distance (Real): ");
       roundedDistance = round(distance * 2.0) / 2.0;
-      Serial.println(roundedDistance);
+      //Serial.println(roundedDistance);
 
       pBLEScan->stop();
     }
@@ -83,7 +84,7 @@ void ConnectToMainServer() {
     HTTPClient http;
 
     // Create a JSON object
-    StaticJsonDocument<100> jsonDoc;  // Adjust the size according to your JSON structure
+    JsonDocument jsonDoc;  // Adjust the size according to your JSON structure
 
     // Populate the JSON object with key-value pairs
     jsonDoc["DeviceId"] = DeviceId;
@@ -127,30 +128,24 @@ void CheckServerStatus() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
 
+    JsonDocument jsonDoc;
 
-    // Create a JSON object
-    StaticJsonDocument<100> jsonDoc;  // Adjust the size according to your JSON structure
-
-    // Populate the JSON object with key-value pairs
     jsonDoc["Id"] = DeviceId;
 
-
-    // Serialize the JSON object to a string
-    String jsonString;
+    char jsonString[200];
     serializeJson(jsonDoc, jsonString);
 
-    char fullURL[50];
+    char fullURL[300];
     strcpy(fullURL, ServerAddress);
     strcat(fullURL, "status");
-    strcat(fullURL, "?data=");
-    strcat(fullURL, jsonString.c_str());
 
 
-    Serial.printf("Sending a GET request to %s\n", fullURL);
+    String str(fullURL);
+    Serial.printf("Sending a POST request to %s\n", fullURL);
     http.begin(fullURL);
-    int httpResponseCode = http.GET();
+    int httpResponseCode = http.POST(jsonString);
 
-     
+
     if (httpResponseCode == 200) {
       Serial.println("Status OK");
       return;
@@ -167,8 +162,11 @@ void CheckServerStatus() {
 }
 
 WebServer server(80);
-bool isScanning=false;
+bool isScanning = false;
+bool isLEDOn = false;
 void setup() {
+  pinMode(LED, OUTPUT);
+
   Serial.begin(115200);
   NimBLEDevice::init("");
 
@@ -186,22 +184,38 @@ void setup() {
 
   Serial.println("WiFi connected");
 
-  server.on("/scan", HTTP_GET, [&distance, &avgRSSI,&isScanning]() {
-    isScanning=true;
-    Serial.println("Proccesing new GET /scan");
-    
+  server.on("/scan", HTTP_GET, [&distance, &avgRSSI, &isScanning,&txPower]() {
+    //return defualt values when calibration is in progress (LED is blinking)
+    if (isLEDOn) {
+      JsonDocument jsonDoc;
+      // Add data to the JSON object
+      jsonDoc["distance"] = -1;
+      jsonDoc["avgrssi"] = -1;
+      jsonDoc["id"] = DeviceId;
+      jsonDoc["rssi1m"]=txPower;
+      // Serialize JSON to a string
+      char jsonString[200];
+      serializeJson(jsonDoc, jsonString);
+
+      // Send JSON response
+      server.send(200, "application/json", jsonString);
+      return;
+    }
+
+    isScanning = true;
+    //Serial.println();
+    //Serial.println("Proccesing new GET /scan");
+
     pBLEScan->start(0, nullptr, false);
 
     int64_t startTime = esp_timer_get_time();
     while (pBLEScan->isScanning() == true) {
-      Serial.println("Collecting data from ble beacon...");
       if (esp_timer_get_time() - startTime >= 5000000) {
         Serial.println("Failed to get RSSI from beacon. Out of range!");
         roundedDistance = -1;
         avgRSSI = -1;
         break;
       }
-      delay(200);
     }
 
     // Create a JSON object
@@ -210,33 +224,108 @@ void setup() {
     jsonDoc["distance"] = roundedDistance;
     jsonDoc["avgrssi"] = avgRSSI;
     jsonDoc["id"] = DeviceId;
+    jsonDoc["rssi1m"]=txPower;
     // Serialize JSON to a string
-    String jsonString;
+    char jsonString[600];
+    serializeJson(jsonDoc, jsonString);
+
+ Serial.print(".");
+    server.send(200, "application/json", jsonString);
+
+    isScanning = false;
+  });
+
+  server.on("/beginCalibration", HTTP_GET, [&avgRSSI, &txPower]() {
+    if (!isLEDOn) {
+      Serial.println("Cannot begin calibration without first getting response 200 from main server /calibrationStatus");
+      server.send(405);
+    return;
+    }
+    isLEDOn = false;
+    digitalWrite(LED, HIGH);
+
+    isScanning = true;
+    Serial.println();
+    Serial.println("Proccesing new GET /beginCalibration");
+
+    pBLEScan->start(0, nullptr, false);
+
+    int64_t startTime = esp_timer_get_time();
+    Serial.println("Collecting data from ble beacon...");
+    while (pBLEScan->isScanning() == true) {
+      if (esp_timer_get_time() - startTime >= 5000000) {
+        Serial.println("Failed to get RSSI from beacon. Out of range!");
+        server.send(404);
+        digitalWrite(LED, LOW);
+        return ;
+      }
+    }
+
+    txPower=avgRSSI;
+    // Create a JSON object
+    JsonDocument jsonDoc;
+    // Add data to the JSON object
+    jsonDoc["rssi1m"] = avgRSSI;
+    // Serialize JSON to a string
+    char jsonString[100];
     serializeJson(jsonDoc, jsonString);
 
     // Send JSON response
     server.send(200, "application/json", jsonString);
-     
-    isScanning=false;
+
+    isScanning = false;
+
+    server.send(200);
+    digitalWrite(LED, LOW);
   });
 
+  server.on("/blinkOn", HTTP_GET, [&isLEDOn]() {
+    isLEDOn = true;
+    server.send(200);
+  });
+  server.on("/blinkOff", HTTP_GET, [&isLEDOn]() {
+    isLEDOn = false;
+    digitalWrite(LED, LOW);
+    server.send(200);
+  });
+
+
+
   server.begin();
+  Serial.print("Server started - ");
+  Serial.println(WiFi.localIP());
+
+  Serial.println("Handeling /scan requests (.):");
 }
 
 
 
 int64_t previuosTime = 0;
-
+int64_t blinkerTimer = 0;
 void loop() {
   server.handleClient();
   if (!isConnected) {
+    isLEDOn = false;
+    digitalWrite(LED, LOW);
+
     ConnectToMainServer();
     return;
   }
 
   //if a minute has passed check if the main server is still active
-  if (isScanning==false&& esp_timer_get_time() - previuosTime >= 60000000) {
+  if (!isScanning && esp_timer_get_time() - previuosTime >= 60000000) {
     previuosTime = esp_timer_get_time();
     CheckServerStatus();
+  }
+
+
+  //start the onboard LED
+  if (isLEDOn) {
+    if (esp_timer_get_time() - blinkerTimer >= 1000000) {
+      blinkerTimer = esp_timer_get_time();
+      digitalWrite(LED, HIGH);
+      delay(10);
+    } else
+      digitalWrite(LED, LOW);
   }
 }
