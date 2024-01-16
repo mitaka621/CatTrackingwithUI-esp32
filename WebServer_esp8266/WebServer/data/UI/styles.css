@@ -33,11 +33,11 @@ header > span {
 }
 header img {
   margin-bottom: -1.8em;
-  margin-right: -1.2em;
+  margin-right: -0.5em;
   -webkit-transform: rotate(10deg);
   transform: rotate(10deg);
  
-  width: 3em;
+  width: 2em;
 }
 .svg,
 .path {

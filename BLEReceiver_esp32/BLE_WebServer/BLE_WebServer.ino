@@ -3,9 +3,13 @@
 #include <HTTPClient.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
+#include "FS.h"
+#include <LittleFS.h>
 
-const char *DeviceId = "on top of pc";
-const char *DeviceType = "ESP32";
+#define FORMAT_LITTLEFS_IF_FAILED true
+
+const char *DeviceId = "on top of pc 2";
+const char *DeviceType = "ESP32C3";
 
 
 const char *ssid = "ditoge03";
@@ -66,7 +70,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
       //Serial.print("Distance (estimated): ");
       //Serial.println(distance);
 
-     // Serial.print("Rounded distance (Real): ");
+      // Serial.print("Rounded distance (Real): ");
       roundedDistance = round(distance * 2.0) / 2.0;
       //Serial.println(roundedDistance);
 
@@ -166,9 +170,36 @@ bool isScanning = false;
 bool isLEDOn = false;
 void setup() {
   pinMode(LED, OUTPUT);
-
   Serial.begin(115200);
   NimBLEDevice::init("");
+
+  if(!LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)){
+        Serial.println("LittleFS Mount Failed");
+        return;
+    }
+
+  File configFile = LittleFS.open("/config.json", "r");
+
+  if (!LittleFS.exists("/config.json")) {
+    configFile.close();
+    Serial.println("Failed to open config file. Creating a new one...");
+
+    File file = LittleFS.open("/config.json", "w+");
+    file.print("{}");
+    Serial.println("File created");
+
+    file.close();
+  } else {
+    JsonDocument config;
+    deserializeJson(config, configFile);
+    Serial.println(configFile.readString());
+    if (config.containsKey("txpower")) {
+      txPower = config["txpower"].as<int>();
+      Serial.print("Loaded txpower from memory: ");
+      Serial.println(txPower);
+    }
+    configFile.close();
+  }
 
   pBLEScan = NimBLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks(), true);
@@ -184,7 +215,7 @@ void setup() {
 
   Serial.println("WiFi connected");
 
-  server.on("/scan", HTTP_GET, [&distance, &avgRSSI, &isScanning,&txPower]() {
+  server.on("/scan", HTTP_GET, [&distance, &avgRSSI, &isScanning, &txPower]() {
     //return defualt values when calibration is in progress (LED is blinking)
     if (isLEDOn) {
       JsonDocument jsonDoc;
@@ -192,7 +223,7 @@ void setup() {
       jsonDoc["distance"] = -1;
       jsonDoc["avgrssi"] = -1;
       jsonDoc["id"] = DeviceId;
-      jsonDoc["rssi1m"]=txPower;
+      jsonDoc["rssi1m"] = txPower;
       // Serialize JSON to a string
       char jsonString[200];
       serializeJson(jsonDoc, jsonString);
@@ -224,12 +255,12 @@ void setup() {
     jsonDoc["distance"] = roundedDistance;
     jsonDoc["avgrssi"] = avgRSSI;
     jsonDoc["id"] = DeviceId;
-    jsonDoc["rssi1m"]=txPower;
+    jsonDoc["rssi1m"] = txPower;
     // Serialize JSON to a string
     char jsonString[600];
     serializeJson(jsonDoc, jsonString);
 
- Serial.print(".");
+    Serial.print(".");
     server.send(200, "application/json", jsonString);
 
     isScanning = false;
@@ -239,7 +270,7 @@ void setup() {
     if (!isLEDOn) {
       Serial.println("Cannot begin calibration without first getting response 200 from main server /calibrationStatus");
       server.send(405);
-    return;
+      return;
     }
     isLEDOn = false;
     digitalWrite(LED, HIGH);
@@ -257,11 +288,18 @@ void setup() {
         Serial.println("Failed to get RSSI from beacon. Out of range!");
         server.send(404);
         digitalWrite(LED, LOW);
-        return ;
+        return;
       }
     }
 
-    txPower=avgRSSI;
+    txPower = avgRSSI;
+
+    JsonDocument newtxPower;
+    newtxPower["txpower"] = txPower;
+    File file = LittleFS.open("/config.json", "r+");
+    serializeJson(newtxPower, file);
+    file.close();
+
     // Create a JSON object
     JsonDocument jsonDoc;
     // Add data to the JSON object

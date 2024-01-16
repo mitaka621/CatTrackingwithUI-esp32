@@ -44,6 +44,8 @@ struct Device {
   }
 };
 
+
+
 class DeviceManager {
 private:
   Device devices[numberDevices];
@@ -217,6 +219,18 @@ void addToBlacklistJSON(const char* newIP) {
 }
 
 
+String readFile(const String& filePath) {
+  File file = LittleFS.open(filePath, "r");
+  if (!file) {
+    return "";  // Handle file not found or other error
+  }
+
+  // Read the content of the file into a String
+  String content = file.readString();
+  file.close();
+  return content;
+}
+
 DeviceManager manager;
 bool CalibrationBegin = false;
 int expectedRequests = 1;
@@ -309,8 +323,11 @@ void setup() {
   if (debug)
     Serial.println(WiFi.localIP());
 
+
+
   //endpoints configuration
   server.on("/", HTTPMethod::HTTP_GET, []() {
+    server.keepAlive(false);
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -330,6 +347,7 @@ void setup() {
   });
 
   server.on("/styles.css", HTTPMethod::HTTP_GET, []() {
+    server.keepAlive(false);
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -349,6 +367,7 @@ void setup() {
   });
 
   server.on("/editor.js", HTTPMethod::HTTP_GET, []() {
+    server.keepAlive(false);
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -369,6 +388,7 @@ void setup() {
 
 
   server.on("/sidemenu.js", HTTPMethod::HTTP_GET, []() {
+   server.keepAlive(false);
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -388,6 +408,7 @@ void setup() {
   });
 
   server.on("/loadData.js", HTTPMethod::HTTP_GET, []() {
+    server.keepAlive(false);
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -406,7 +427,9 @@ void setup() {
     file.close();
   });
 
+
   server.on("/resources/cattt.svg", HTTPMethod::HTTP_GET, []() {
+    server.keepAlive(false);
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -836,6 +859,48 @@ void setup() {
     }
   });
 
+  server.on("/map", HTTP_POST, []() {
+    IPAddress clientIP = server.client().remoteIP();
+
+    if (debug)
+      Serial.printf("\n\n---Proccesing new POST /map request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("plain").c_str());
+
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
+    File map = LittleFS.open("/map.json", "w+");
+    map.print(server.arg("plain"));
+    map.close();
+
+    server.send(200);
+  });
+
+  server.on("/map", HTTP_GET, []() {
+    IPAddress clientIP = server.client().remoteIP();
+
+    if (debug)
+      Serial.printf("\n\n---Proccesing new GET /map request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), server.arg("plain").c_str());
+
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+    if (!LittleFS.exists("/map.json")) {
+      server.send(404);
+      return;
+    }
+
+    File map = LittleFS.open("/map.json", "r");
+    server.send(200, "application/json", map);
+    map.close();
+  });
+
 
   server.begin();
   if (debug)
@@ -955,6 +1020,7 @@ void onCalibrationComplete(const char* Id, AsyncHTTPRequest* request, int readyS
     }
   }
 }
+
 
 
 void loop() {
