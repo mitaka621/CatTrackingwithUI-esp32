@@ -144,8 +144,8 @@
         </div>
         <a class="button2">DEVICES</a>
         <div class="container2">
-          <div class="devicecontainer" id="1">
-            <h2 >Device ID: 1</h2>
+          <div class="devicecontainer" id="1" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
+            <h2 >1</h2>
             <p class="online">Connected</p>
             <div class="distanceAndRSSI">
               <p class="distance"><span>Distance:</span> 3m</p>
@@ -156,8 +156,8 @@
             <p class="type">Type: ESP8266</p>
           </div>
 
-          <div class="devicecontainer offline" id="2">
-            <h2 >Device ID: 2</h2>
+          <div class="devicecontainer offline" id="2" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
+            <h2 >2</h2>
             <p class="offline">Disconnected</p>
             <div class="distanceAndRSSI">
               <p class="distance"><span>Distance:</span> 3m</p>
@@ -173,7 +173,7 @@
           
         </div>
         <div class="container3">
-          <a class="button" onclick="SnapToGrid()">Snap to Grid</a
+          <a class="button" onclick="SnapToGrid()" mouseenter="Hover(this)">Snap to Grid</a
           ><a class="button" onclick="AddNewBlock()">Add New Block</a
           ><a class="button" onclick="deleteBlocks(this)">Delete Block</a
           ><a class="button" onclick="Save()">Save to PC</a

@@ -85,6 +85,8 @@ function EditMap() {
     }
   });
   document.querySelectorAll(".recieverID").forEach((item) => {
+    item.parentElement.addEventListener("mouseenter", AddOutline);
+    item.parentElement.addEventListener("mouseleave", RemoveOutline);
     item.style.visibility = "visible";
   });
   document.querySelectorAll(".object").forEach((item) => {
@@ -330,6 +332,10 @@ function drop(ev) {
   deviceDiv.removeAttribute("ondragstart");
 
   const newReciver = document.createElement("div");
+  newReciver.addEventListener("mouseenter", AddOutline);
+  newReciver.addEventListener("mouseleave", RemoveOutline);
+  newReciver.setAttribute("onmouseenter", "AddOutline(this)");
+  newReciver.setAttribute("onmouseleave", "RemoveOutline(this)");
   newReciver.classList += "object reciever";
   const p = document.createElement("p");
   p.classList += "recieverID";
@@ -338,6 +344,7 @@ function drop(ev) {
   newReciver.style.top = ev.layerY + "px";
   newReciver.style.left = ev.layerX + "px";
   newReciver.addEventListener("mousedown", Hold);
+  
 
   ev = ev.target;
   if (ev.classList[0] !== "map") {
@@ -405,7 +412,7 @@ function deleteBlocks(e) {
     });
 
     document.querySelectorAll(".object").forEach((item) => {
-      String(item.classList) === "object reciever"
+      item.classList.contains("object") && item.classList.contains("reciever")
         ? (item.style.backgroundColor = "#ffe205")
         : (item.style.backgroundColor = "white");
       item.style.borderStyle = "none";
@@ -561,4 +568,38 @@ function zoomOut() {
 
 function moveMap() {
   document.querySelector(".move").addEventListener("mousedown", Hold);
+}
+
+function AddOutline(selected) {
+  if (Array.from(selected.classList).includes("reciever")) {
+    selected.classList+=" reciverhover";
+    selected.querySelector("p").style.visibility="visible";
+    document.querySelector(`div.devicecontainer[id="${selected.querySelector("p").textContent}"]`).classList+=" reciverhover";
+    return;
+  }
+
+  selected.classList+=" reciverhover";
+  var obj=Array.from(document.querySelectorAll(".recieverID")).find((e)=>e.textContent==selected.id);
+  if (obj) {
+    console.log("here");
+    obj.style.visibility="visible";
+    obj.parentElement.classList+=" reciverhover";
+  }
+}
+
+function RemoveOutline(selected) {
+  if (Array.from(selected.classList).includes("reciever")) {
+    selected.classList.remove("reciverhover");
+    selected.querySelector("p").style.visibility="hidden";
+
+    document.querySelector(`div.devicecontainer[id="${selected.querySelector("p").textContent}"]`).classList.remove("reciverhover");
+    
+    return;
+  }
+  selected.classList.remove("reciverhover");
+  var obj=Array.from(document.querySelectorAll(".recieverID")).find((e)=>e.textContent==selected.id);
+  if (obj) {
+    obj.style.visibility="hidden";
+    obj.parentElement.classList.remove("reciverhover");
+  }
 }

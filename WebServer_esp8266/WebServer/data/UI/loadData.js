@@ -47,7 +47,7 @@ function displayDevices(){
         currentDiv.querySelector(".signalstr").innerHTML=`RSSI at 1m: ${device.rssi1m}db`;
       }
       else
-      deviceContainer.innerHTML+=`<div class="devicecontainer" id="${device.id}">
+      deviceContainer.innerHTML+=`<div class="devicecontainer" id="${device.id}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
                                     <h2>${device.id}</h2>
                                     <p class="online">Connected</p>
                                     <div class="distanceAndRSSI">
@@ -73,7 +73,7 @@ function displayDevices(){
         currentDiv.querySelector(".online").classList="offline";
       }
       else
-        deviceContainer.innerHTML=`<div class="devicecontainer offline" id="${x}">
+        deviceContainer.innerHTML=`<div class="devicecontainer offline" id="${x}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
                                       <h2>${x}</h2>
                                       <p class="offline">Disconnected</p>
                                       <div class="distanceAndRSSI">
