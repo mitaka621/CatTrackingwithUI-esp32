@@ -25,6 +25,7 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
       {
         Serial.print("Device name: ");
         Serial.println(advertisedDevice.getName().c_str());
+        Serial.println(advertisedDevice.getAddress().toString().c_str());
         Serial.println("");
       }
 

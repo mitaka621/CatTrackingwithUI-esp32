@@ -55,7 +55,7 @@ function displayDevices(){
                                       <p class="rssi"><span>RSSI:</span>${device.avgRSSI=="-1"?"--":device.avgRSSI}db</p>
                                     </div>           
                                     <p class="signalstr">RSSI at 1m: ${device.rssi1m}db</p>
-                                    <a class="calibrate-button" onclick="InitiateScan(this)">Calibrate</a>
+                                    <a class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>
                                     <p class="type">Type: ${device.type}</p>
                                   </div>`
     });
@@ -72,8 +72,8 @@ function displayDevices(){
         currentDiv.querySelector(".online").textContent="Disconnected";
         currentDiv.querySelector(".online").classList="offline";
       }
-      else
-        deviceContainer.innerHTML=`<div class="devicecontainer offline" id="${x}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
+      if(!currentDiv&& currentDiv.querySelector("p.offline"))
+        deviceContainer.innerHTML+=`<div class="devicecontainer offline" id="${x}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
                                       <h2>${x}</h2>
                                       <p class="offline">Disconnected</p>
                                       <div class="distanceAndRSSI">
@@ -81,7 +81,7 @@ function displayDevices(){
                                         <p class="rssi"><span>RSSI:</span>--</p>
                                       </div>           
                                       <p class="signalstr">RSSI at 1m: --</p>
-                                      <a class="calibrate-button" onclick="InitiateScan(this)">Calibrate</a>                                
+                                      <a class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>                                
                                       <p class="type">Type: ESP32</p>
                                     </div>`
       
@@ -92,10 +92,15 @@ function displayDevices(){
       if(!placedDevices.includes(element.querySelector("h2").textContent)&&!extractedIds.includes(element.querySelector("h2").textContent))
       element.remove();
     });
+
+    data.forEach((el)=>{
+      if (Number(el.distance)!==-1) 
+      DrawDistances(el.id,Number(el.distance));
+    })
   });
 }
 
-function InitiateScan(e){
+function InitiateCalibration(e){
   const deviceId=e.parentElement.id;
   fetch(serverIp+"/calibrationStatus", {
     method: 'POST',
@@ -129,7 +134,6 @@ function InitiateScan(e){
       console.error('Error:', error);
     });
 }
-
 function StartCalibration(e) {
   const deviceId=e.parentElement.parentElement.id;
 
@@ -142,7 +146,7 @@ function StartCalibration(e) {
   })
     .then(response => {  
       if (response.status===200) {
-        e.parentElement.outerHTML=`<a class="calibrate-button" onclick="InitiateScan(this)">Calibrate</a>`;
+        e.parentElement.outerHTML=`<a class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>`;
       }
     })
     .catch(error => {
@@ -161,7 +165,7 @@ function CancelCalibration(e) {
   })
     .then(response => {  
       if (response.status===200) {
-        e.parentElement.outerHTML=`<a class="calibrate-button" onclick="InitiateScan(this)">Calibrate</a>`;
+        e.parentElement.outerHTML=`<a class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>`;
       }
     })
     .catch(error => {
@@ -193,4 +197,16 @@ function LoadMapFromServer() {
 
     ExitEditor();
   })
+}
+
+function DrawDistances(id, distance) {
+ const objReciver= Array.from(document.querySelectorAll(".recieverID"))
+ .find((element)=>element.textContent===id)
+ .parentElement;
+
+ var initialRadius=Number(window.getComputedStyle(objReciver).width.split("p")[0])/2;
+ console.log(initialRadius);
+
+ var distanceInPx=Mtopx(distance);
+ objReciver.style.scale=distanceInPx/initialRadius;
 }

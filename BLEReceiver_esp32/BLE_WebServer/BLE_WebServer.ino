@@ -8,8 +8,8 @@
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 
-const char *DeviceId = "on top of pc 2";
-const char *DeviceType = "ESP32C3";
+const char *DeviceId = "on couch";
+const char *DeviceType = "ESP32";
 
 
 const char *ssid = "ditoge03";
@@ -18,13 +18,14 @@ const char *password = "mitko111";
 const char *ServerAddress = "http://192.168.0.9/";
 
 //mac address for the BLE beacon
-const char beaconMAC[] = "e9:65:3c:b5:99:c1";
+//const char beaconMAC[] = "e9:65:3c:b5:99:c1"; //big boy beacon
+const char beaconMAC[] = "d0:3e:ed:1e:9a:9b"; //small beacon 5.0
 
 int txPower = -44;  // Reference TxPower (RSSI) in dBm at 1 meter distance
 const int N = 2;    //const from 2 to 4 for accuracy
 
 NimBLEScan *pBLEScan;
-const int RSSIsampleSize = 10;
+const int RSSIsampleSize = 1;
 int RSSIArr[RSSIsampleSize];
 int arrCount = 0;
 double distance;

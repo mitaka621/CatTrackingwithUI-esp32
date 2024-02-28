@@ -64,8 +64,6 @@ function EditMap() {
 
   const map = document.querySelector(".map");
   map.setAttribute("class", "map edit");
-  //document.querySelector(".sidemenu").innerHTML +=
-  //' <a class="button" onclick="SnapToGrid()" href="#">Snap to Grid</a><a class="button" onclick="AddNewBlock()" href="#">Add New Block</a><a class="button" onclick="Deleteblock()" href="#">Delete Block</a><a class="button" onclick="Save()" href="#">Save</a><a class="button" onclick="Load()" href="#">Load</a>';
 
   btn.removeEventListener("click", EditMap);
   btn.addEventListener("click", ExitEditor);
@@ -91,23 +89,12 @@ function EditMap() {
   });
   document.querySelectorAll(".object").forEach((item) => {
     item.addEventListener("mousedown", Hold);
-    if (!item.hasChildNodes()) {
+    if (!item.classList.contains("reciever")) {
       item.classList += " hover";
-      item.innerHTML = `<div class="measuring"style="visibility:${
-        item.offsetWidth > 60 ? "visible" : "hidden"
-      };"><p><</p><div></div><p class="measurement"> ${pxToM(
-        item.offsetWidth
-      )}m </p><div></div><p>></p></div>`;
 
-      item.innerHTML += `<div class="height-measuring" style="visibility:${
-        item.offsetHeight > 60 ? "visible" : "hidden"
-      };">
-      <p>></p>
-      <div></div>
-      <p class="measurement-height">${pxToM(item.offsetHeight)}m</p>
-      <div></div>
-      <p><</p>
-    </div>`;
+      item.querySelector(".measuring").style.visibility = item.offsetWidth > 60 ? "visible" : "hidden";
+      
+      item.querySelector(".height-measuring").style.visibility = item.offsetHeight > 60 ? "visible" : "hidden";    
     }
 
     document.addEventListener("mouseup", () => {
@@ -170,14 +157,19 @@ function ExitEditor() {
 
   document.querySelectorAll(".object").forEach((item) => {
     item.removeEventListener("mousedown", Hold);
-    if (item.classList[1] !== "reciever") {
-      item.classList = "object";
-      item.innerHTML = "";
+    if (!item.classList.contains("reciever")) {
+      item.classList.remove("hover")
+      
+      item.querySelector(".measuring").style.visibility="hidden";
+
+      item.querySelector(".height-measuring").style.visibility="hidden";
     }
     document.removeEventListener("mouseup", () =>
       cancelAnimationFrame(animationFrameId)
     );
   });
+
+  document.querySelector(".popup-menu").style.display="none";
 
   document.querySelector(".button").removeEventListener("click", ExitEditor);
   document.querySelector(".button").addEventListener("click", EditMap);
@@ -202,7 +194,7 @@ function Hold(e) {
   }
 
   function moveMap() {
-    document.querySelectorAll(".object").forEach((item) => {
+    document.querySelectorAll("div.map>div.object").forEach((item) => {
       let newOffsetY = Math.round(
         Number(window.getComputedStyle(item).top.split("p")[0]) + offsetY * 2
       );
@@ -347,9 +339,11 @@ function drop(ev) {
   
 
   ev = ev.target;
-  if (ev.classList[0] !== "map") {
-    ev = ev.parentElement;
+  if (ev.classList.contains("reciever")) {
+    ev = document.querySelector(".map");
   }
+  if(ev.nodeName==="INPUT")
+    ev=ev.parentElement.parentElement;
 
   ev.appendChild(newReciver);
 }
@@ -386,10 +380,8 @@ function deleteBlocks(e) {
       item.style.cursor = "auto";
     });
     document.querySelectorAll(".object").forEach((item) => {
-      let classes = String(item.classList);
-      if (classes.includes("hover")) {
-        classes = classes.replace(" hover", "");
-        item.classList = classes;
+      if (item.classList.contains("hover")) {
+        item.classList.remove("hover");
       }
 
       item.addEventListener("dblclick", deleteSpecifiedBlock);
@@ -397,10 +389,8 @@ function deleteBlocks(e) {
       document.removeEventListener("mouseup", () =>
         cancelAnimationFrame(animationFrameId)
       );
-
-      item.style.backgroundColor = "red";
-      item.style.border = "1px solid white";
-      item.style.cursor = "crosshair";
+      item.classList.add("red");
+    
     });
   } else {
     document.querySelector(".mapcontrols").style.visibility = "visible";
@@ -412,9 +402,7 @@ function deleteBlocks(e) {
     });
 
     document.querySelectorAll(".object").forEach((item) => {
-      item.classList.contains("object") && item.classList.contains("reciever")
-        ? (item.style.backgroundColor = "#ffe205")
-        : (item.style.backgroundColor = "white");
+      item.classList.remove("red");
       item.style.borderStyle = "none";
       item.style.cursor = "e-resize";
       item.removeEventListener("dblclick", deleteSpecifiedBlock);
@@ -571,7 +559,10 @@ function moveMap() {
 }
 
 function AddOutline(selected) {
-  if (Array.from(selected.classList).includes("reciever")) {
+  if (selected.classList.contains("reciever")) {
+    document.querySelectorAll("div.object:not(.reciever)").forEach(item=>{
+      item.removeEventListener("mousedown", Hold);
+    });
     selected.classList+=" reciverhover";
     selected.querySelector("p").style.visibility="visible";
     document.querySelector(`div.devicecontainer[id="${selected.querySelector("p").textContent}"]`).classList+=" reciverhover";
@@ -581,14 +572,16 @@ function AddOutline(selected) {
   selected.classList+=" reciverhover";
   var obj=Array.from(document.querySelectorAll(".recieverID")).find((e)=>e.textContent==selected.id);
   if (obj) {
-    console.log("here");
     obj.style.visibility="visible";
     obj.parentElement.classList+=" reciverhover";
   }
 }
 
 function RemoveOutline(selected) {
-  if (Array.from(selected.classList).includes("reciever")) {
+  if (selected.classList.contains("reciever")) {
+    document.querySelectorAll("div.object:not(.reciever)").forEach(item=>{
+      item.addEventListener("mousedown", Hold);
+    });
     selected.classList.remove("reciverhover");
     selected.querySelector("p").style.visibility="hidden";
 
@@ -602,4 +595,29 @@ function RemoveOutline(selected) {
     obj.style.visibility="hidden";
     obj.parentElement.classList.remove("reciverhover");
   }
+}
+
+function OpenPopupMenu(e) {
+
+ var menu= document.querySelector(".popup-menu");
+ if (menu.style.display==="flex") {
+  menu.style.display="none";
+  e.style.color="white";
+ }
+ else
+ {
+  menu.style.display="flex";
+  e.style.color="#ffe205";
+}
+}
+
+function AddNewRoom(){
+  const div = document.createElement("div");
+  div.classList = "object hover room";
+  div.innerHTML = `<div class="measuring"style="visibility:visible;"><input type="text" name="roomName" placeholder="Enter room name"><p><</p><div></div><p class="measurement">${pxToM(500)}m</p><div></div><p>></p></div><div class="height-measuring" style="visibility: visible;"><p>></p><div></div><p class="measurement-height">${pxToM(200)}m</p><div></div><p><</p></div>`;
+  div.addEventListener("mousedown", Hold);
+  document.querySelector(".map").appendChild(div);
+  document.addEventListener("mouseup", () => {
+    cancelAnimationFrame(animationFrameId);
+  });
 }

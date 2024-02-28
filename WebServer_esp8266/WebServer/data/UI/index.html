@@ -173,16 +173,28 @@
           
         </div>
         <div class="container3">
-          <a class="button" onclick="SnapToGrid()" mouseenter="Hover(this)">Snap to Grid</a
-          ><a class="button" onclick="AddNewBlock()">Add New Block</a
-          ><a class="button" onclick="deleteBlocks(this)">Delete Block</a
+          <a class="button" onclick="SnapToGrid()" mouseenter="Hover(this)">Snap to Grid</a>
+          <a class="button" onclick="OpenPopupMenu(this)">Add New Block</a>
+          <div class="popup-menu">
+            <a class="wall-add" onclick="AddNewBlock()">
+              <img src="/UI/resources/wallIcon.svg">
+            </a>
+            <a class="wall-add" onclick="AddNewRoom()">
+              <img src="/UI/resources/roomIcon.svg">
+            </a>
+          </div>
+          <a class="button" onclick="deleteBlocks(this)">Delete Block</a
           ><a class="button" onclick="Save()">Save to PC</a
-          ><a class="button" onclick="Load()">Load</a>
+          ><a class="button" onclick="Load()">
+            
+            Load
+          </a>
         </div>
+        
       </div>
     </main>
     <script src="./editor.js"></script>
     <script src="./sidemenu.js"></script>
-    <script src="./loadData.js"></script>
+    <!-- <script src="./loadData.js"></script> -->
   </body>
 </html>
