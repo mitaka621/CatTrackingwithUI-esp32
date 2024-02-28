@@ -166,7 +166,10 @@ void CheckServerStatus() {
   }
 }
 
+
+
 WebServer server(80);
+
 bool isScanning = false;
 bool isLEDOn = false;
 void setup() {
@@ -215,7 +218,6 @@ void setup() {
   }
 
   Serial.println("WiFi connected");
-
   server.on("/scan", HTTP_GET, [&distance, &avgRSSI, &isScanning, &txPower]() {
     //return defualt values when calibration is in progress (LED is blinking)
     if (isLEDOn) {

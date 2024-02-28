@@ -4,10 +4,13 @@
 #include <LittleFS.h>
 #include <AsyncHTTPRequest_Generic.h>
 #include <unordered_set>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 
 IPAddress staticIP(192, 168, 0, 9);  // Set the desired static IP address
 IPAddress gateway(192, 168, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(8, 8, 8, 8);
 
 ESP8266WebServer server(80);
 
@@ -231,6 +234,49 @@ String readFile(const String& filePath) {
   return content;
 }
 
+
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org");
+bool SendNotification(char* title, char* content, int type) {
+
+  timeClient.update();
+  unsigned long dateTime = timeClient.getEpochTime();
+
+  JsonDocument doc;
+  doc["dataSource"] = "Cluster0";
+  doc["database"] = "esp8266";
+  doc["collection"] = "Notifications";
+
+  doc["document"]["title"] = title;
+  doc["document"]["content"] = content;
+  doc["document"]["dateTime"] = dateTime;
+  doc["document"]["isSeen"] = 0;
+  doc["document"]["type"] = type;
+
+  String body;
+  serializeJson(doc, body);
+
+  char* url = "https://worldtimeapi.org/api/timezone";
+
+requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {
+if (readyState == readyStateDone) {
+    if (debug)
+      Serial.println(request->responseHTTPString());
+}
+});
+
+
+    
+            while (!requests[numberDevices].open("GET", url)) {
+              Serial.println("Wating for reqest to open");
+            }
+            requests[numberDevices].send();
+            
+
+
+  return true;
+}
+
 DeviceManager manager;
 bool CalibrationBegin = false;
 int expectedRequests = 1;
@@ -308,8 +354,7 @@ void setup() {
   }
 
   WiFi.begin(config["ssid"].as<String>().c_str(), config["password"].as<String>().c_str());
-  WiFi.config(staticIP, gateway, subnet);
-
+  WiFi.config(staticIP, gateway, subnet, dns);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     if (debug)
@@ -323,7 +368,8 @@ void setup() {
   if (debug)
     Serial.println(WiFi.localIP());
 
-
+  timeClient.begin();
+  timeClient.setTimeOffset(7200);
 
   //endpoints configuration
   server.on("/", HTTPMethod::HTTP_GET, []() {
@@ -388,7 +434,7 @@ void setup() {
 
 
   server.on("/sidemenu.js", HTTPMethod::HTTP_GET, []() {
-   server.keepAlive(false);
+    server.keepAlive(false);
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -905,16 +951,6 @@ void setup() {
   server.begin();
   if (debug)
     Serial.println("HTTP server started");
-
-  // manager.AddNewDevice("1", "123.123.123.123", "ESP32");
-  // manager.AddNewDevice("2", "123.123.123.123", "nekvodrugo");
-  // manager.AddNewDevice("3", "123.123.123.123", "nekvodrugo");
-  // if(debug)
-  //Serial.println(manager.isDeviceRegistered("1", "123.123.123.123"));
-  // if(debug)
-  //Serial.println(manager.isDeviceRegistered("1", "13.123.123.14"));
-  // if(debug)
-  //Serial.println(manager.isDeviceRegistered("5", "13.123.123.14"));
 }
 
 
@@ -1024,6 +1060,8 @@ void onCalibrationComplete(const char* Id, AsyncHTTPRequest* request, int readyS
 
 
 void loop() {
+  SendNotification("titledsa", "this is the content", 1);
+  delay(1000);
   server.handleClient();
 
   //if no curretn scan is active begin scanning for the beacon
