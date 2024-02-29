@@ -1,18 +1,23 @@
-#include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
+
+#include <WiFi.h>
+#include <WebServer.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
-#include <AsyncHTTPRequest_Generic.h>
 #include <unordered_set>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+
+#include <AsyncHTTPRequest_Generic.h>
+#include <AsyncHTTPSRequest_Generic.h>
+
+
 
 IPAddress staticIP(192, 168, 0, 9);  // Set the desired static IP address
 IPAddress gateway(192, 168, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dns(8, 8, 8, 8);
 
-ESP8266WebServer server(80);
+WebServer server(80);
 
 const bool debug = true;
 
@@ -95,7 +100,8 @@ public:
       return 0;
     }
 
-    if (!IPAddress::isValid(Ip)) {
+    IPAddress address;
+    if (!address.fromString(Ip)) {
       if (debug)
         Serial.println("Cant add device because of invalid IP!");
       return 0;
@@ -373,7 +379,7 @@ void setup() {
 
   //endpoints configuration
   server.on("/", HTTPMethod::HTTP_GET, []() {
-    server.keepAlive(false);
+     
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -393,7 +399,7 @@ void setup() {
   });
 
   server.on("/styles.css", HTTPMethod::HTTP_GET, []() {
-    server.keepAlive(false);
+     
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -413,7 +419,7 @@ void setup() {
   });
 
   server.on("/editor.js", HTTPMethod::HTTP_GET, []() {
-    server.keepAlive(false);
+     
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -434,7 +440,7 @@ void setup() {
 
 
   server.on("/sidemenu.js", HTTPMethod::HTTP_GET, []() {
-    server.keepAlive(false);
+     
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -454,7 +460,7 @@ void setup() {
   });
 
   server.on("/loadData.js", HTTPMethod::HTTP_GET, []() {
-    server.keepAlive(false);
+     
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -475,7 +481,7 @@ void setup() {
 
 
   server.on("/resources/cattt.svg", HTTPMethod::HTTP_GET, []() {
-    server.keepAlive(false);
+     
     IPAddress clientIP = server.client().remoteIP();
     if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
       if (debug)
@@ -943,7 +949,7 @@ void setup() {
     }
 
     File map = LittleFS.open("/map.json", "r");
-    server.send(200, "application/json", map);
+    server.send(200, "application/json", map.readString());
     map.close();
   });
 
