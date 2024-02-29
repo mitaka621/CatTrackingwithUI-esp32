@@ -10,6 +10,8 @@
 #include <AsyncHTTPRequest_Generic.h>
 #include <AsyncHTTPSRequest_Generic.h>
 
+#define FORMAT_LITTLEFS_IF_FAILED true
+
 
 
 IPAddress staticIP(192, 168, 0, 9);  // Set the desired static IP address
@@ -291,7 +293,7 @@ std::unordered_set<std::string> blacklistSet;
 void setup() {
   Serial.begin(115200);
 
-  if (!LittleFS.begin()) {
+  if (!LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)) {
     if (debug)
       Serial.println("Failed to mount LittleFS");
     return;
@@ -1066,8 +1068,8 @@ void onCalibrationComplete(const char* Id, AsyncHTTPRequest* request, int readyS
 
 
 void loop() {
-  SendNotification("titledsa", "this is the content", 1);
-  delay(1000);
+  // SendNotification("titledsa", "this is the content", 1);
+  // delay(1000);
   server.handleClient();
 
   //if no curretn scan is active begin scanning for the beacon
