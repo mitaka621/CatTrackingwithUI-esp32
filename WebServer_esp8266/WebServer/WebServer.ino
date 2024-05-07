@@ -14,7 +14,7 @@ IPAddress dns(8, 8, 8, 8);
 
 ESP8266WebServer server(80);
 
-const bool debug = true;
+const bool debug = false;
 
 //Device struct config
 const int idLength = 50;
@@ -956,6 +956,8 @@ void setup() {
 
 void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState) {
   if (readyState == readyStateDone) {
+    if(!debug)
+    Serial.print(".");
     if (debug)
       Serial.print("Async request completed -> ");
 
@@ -1060,8 +1062,6 @@ void onCalibrationComplete(const char* Id, AsyncHTTPRequest* request, int readyS
 
 
 void loop() {
-  SendNotification("titledsa", "this is the content", 1);
-  delay(1000);
   server.handleClient();
 
   //if no curretn scan is active begin scanning for the beacon

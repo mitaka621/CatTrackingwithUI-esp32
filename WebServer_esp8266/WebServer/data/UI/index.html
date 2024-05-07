@@ -75,8 +75,8 @@
         </p>
       </a>
       <div class="sidemenu">
-        <a class="button2 green">Notifications</a>
-        <div class="container">
+        <a class="button2 green" style="display:none;">Notifications</a>
+        <div class="container" style="height: 0px; display: none;">
           <div class="notificationcontainer level1">
             <a onclick="deleteNotification(this)">
               <svg
@@ -143,7 +143,7 @@
           </div>
         </div>
         <a class="button2">DEVICES</a>
-        <div class="container2">
+        <div class="container2" style="height: 100%;">
           <div class="devicecontainer" id="1" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
             <h2 >1</h2>
             <p class="online">Connected</p>
@@ -195,6 +195,6 @@
     </main>
     <script src="./editor.js"></script>
     <script src="./sidemenu.js"></script>
-    <!-- <script src="./loadData.js"></script> -->
+    <script src="./loadData.js"></script>
   </body>
 </html>
