@@ -348,17 +348,6 @@ function drop(ev) {
   ev.appendChild(newReciver);
 }
 
-function AddNewBlock() {
-  const div = document.createElement("div");
-  div.classList = "object hover";
-  div.innerHTML = `<div class="measuring"style="visibility:hidden;"><p><</p><div></div><p class="measurement"></p><div></div><p>></p></div><div class="height-measuring" style="visibility: hidden;"><p>></p><div></div><p class="measurement-height"></p><div></div><p><</p></div>`;
-  div.addEventListener("mousedown", Hold);
-  document.querySelector(".map").appendChild(div);
-  document.addEventListener("mouseup", () => {
-    cancelAnimationFrame(animationFrameId);
-  });
-}
-
 let isEnabled = false;
 function deleteBlocks(e) {
   if (!isEnabled) {
@@ -611,13 +600,27 @@ function OpenPopupMenu(e) {
 }
 }
 
+function AddNewBlock() {
+  const div = document.createElement("div");
+  div.classList = "object hover";
+  div.innerHTML = `<div class="measuring"style="visibility:hidden;"><p><</p><div></div><p class="measurement"></p><div></div><p>></p></div><div class="height-measuring" style="visibility: hidden;"><p>></p><div></div><p class="measurement-height"></p><div></div><p><</p></div>`;
+  div.addEventListener("mousedown", Hold);
+  document.querySelector(".map").insertBefore(div, document.querySelector(".position-display"));
+  document.addEventListener("mouseup", () => {
+    cancelAnimationFrame(animationFrameId);
+  });
+}
+
 function AddNewRoom(){
   const div = document.createElement("div");
   div.classList = "object hover room";
   div.innerHTML = `<div class="measuring"style="visibility:visible;"><input type="text" name="roomName" placeholder="Enter room name"><p><</p><div></div><p class="measurement">${pxToM(500)}m</p><div></div><p>></p></div><div class="height-measuring" style="visibility: visible;"><p>></p><div></div><p class="measurement-height">${pxToM(200)}m</p><div></div><p><</p></div>`;
   div.addEventListener("mousedown", Hold);
-  document.querySelector(".map").appendChild(div);
+  document.querySelector(".map").insertBefore(div, document.querySelector(".position-display"));
   document.addEventListener("mouseup", () => {
     cancelAnimationFrame(animationFrameId);
   });
 }
+
+
+

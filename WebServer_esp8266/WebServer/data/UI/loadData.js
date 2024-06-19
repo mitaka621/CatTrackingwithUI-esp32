@@ -18,9 +18,7 @@ function displayDevices(){
     }
     return response.json();
   })
-  .then(data => {
-    
-    
+  .then(data => {   
     if (data.length===0 && placedDevices.length===0) {
       deviceContainer.innerHTML=`<h2 class="nodevices" style="color:white; margin-top:0.5em">No devices!</h2>`;
       return;
@@ -29,7 +27,7 @@ function displayDevices(){
       deviceContainer.querySelector(`h2.nodevices`).remove();
     }
     
-    data.sort((a,b)=>a.id-b.id);
+    data.sort((a,b)=>a.distance-b.distance);
     console.log("Data received:", data);    
     const extractedIds=data.map((device)=>device.id);
 
@@ -93,10 +91,31 @@ function displayDevices(){
       element.remove();
     });
 
+    if (Number(data[0].distance)<=1&&Number(data[0].distance)!==-1) {
+      clearCanvas();
+      DrawDistances(data[0].id,Number(data[0].distance));
+      return;
+    }
+
+    let points=[];
     data.forEach((el)=>{
-      if (Number(el.distance)!==-1) 
-      DrawDistances(el.id,Number(el.distance));
-    })
+      if (Number(el.distance)!==-1&&points.length<3) {
+        clearAllDistance();
+        try{
+          const objReciver= Array.from(document.querySelectorAll(".recieverID"))
+          .find((element)=>element.textContent===el.id)
+          .parentElement;
+
+          if (objReciver) {
+            points.push({y:Number(objReciver.style.top.split("p")[0]), x:Number(objReciver.style.left.split("p")[0])})
+          }  
+        }
+        catch{}            
+      }
+    });
+    console.log(points);
+
+    drawTriangle(points);
   });
 }
 
@@ -210,3 +229,46 @@ function DrawDistances(id, distance) {
  var distanceInPx=Mtopx(distance);
  objReciver.style.scale=distanceInPx/initialRadius;
 }
+
+function clearAllDistance(){
+  Array.from(document.querySelectorAll(".reciever")).forEach(r=>{
+    r.style.scale="initial";
+  })
+}
+
+const canvas = document.getElementById('position-canvas');
+const ctx = canvas.getContext('2d');
+
+function clearCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawTriangle(arr) {
+  clearCanvas();
+
+  if (arr.length === 0) {
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(arr[0].x, arr[0].y);
+
+  for (let i = 1; i < arr.length; i++) {
+      ctx.lineTo(arr[i].x, arr[i].y);
+  }
+
+  ctx.closePath();
+
+  // Set the fill and stroke styles to red
+  ctx.fillStyle = '#ff8d8d62';
+
+  // Fill and stroke the triangle
+  ctx.fill();
+}
+
+function resizeCanvas() {
+  const container = document.querySelector('.map');
+  canvas.setAttribute("width",getComputedStyle(container).width);
+  canvas.setAttribute("height",getComputedStyle(container).height);
+}
+resizeCanvas();
