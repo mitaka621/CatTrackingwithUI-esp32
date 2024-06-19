@@ -8,7 +8,7 @@
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 
-const char *DeviceId = "on couch";
+const char *DeviceId = "couch";
 const char *DeviceType = "ESP32";
 
 
@@ -211,7 +211,7 @@ void setup() {
 
 
   WiFi.begin(ssid, password);
-  WiFi.setAutoConnect(true);
+  WiFi.setAutoReconnect(true);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");

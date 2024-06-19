@@ -217,8 +217,6 @@ void addToBlacklistJSON(const char* newIP) {
   if (debug)
     Serial.println("Added IP to blacklist successfully");
   file.close();
-  if (debug)
-    Serial.printf("File:\n%s\n", LittleFS.open("/blacklist.json", "r").readString().c_str());
 }
 
 
@@ -235,47 +233,41 @@ String readFile(const String& filePath) {
 }
 
 
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org");
-bool SendNotification(char* title, char* content, int type) {
+ WiFiUDP ntpUDP;
+ NTPClient timeClient(ntpUDP, "pool.ntp.org");
+// bool SendNotification(char* title, char* content, int type) {
 
-  timeClient.update();
-  unsigned long dateTime = timeClient.getEpochTime();
+//   timeClient.update();
+//   unsigned long dateTime = timeClient.getEpochTime();
 
-  JsonDocument doc;
-  doc["dataSource"] = "Cluster0";
-  doc["database"] = "esp8266";
-  doc["collection"] = "Notifications";
+//   JsonDocument doc;
+//   doc["dataSource"] = "Cluster0";
+//   doc["database"] = "esp8266";
+//   doc["collection"] = "Notifications";
 
-  doc["document"]["title"] = title;
-  doc["document"]["content"] = content;
-  doc["document"]["dateTime"] = dateTime;
-  doc["document"]["isSeen"] = 0;
-  doc["document"]["type"] = type;
+//   doc["document"]["title"] = title;
+//   doc["document"]["content"] = content;
+//   doc["document"]["dateTime"] = dateTime;
+//   doc["document"]["isSeen"] = 0;
+//   doc["document"]["type"] = type;
 
-  String body;
-  serializeJson(doc, body);
+//   String body;
+//   serializeJson(doc, body);
 
-  char* url = "https://worldtimeapi.org/api/timezone";
+//   char* url = "https://worldtimeapi.org/api/timezone";
 
-requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {
-if (readyState == readyStateDone) {
-    if (debug)
-      Serial.println(request->responseHTTPString());
-}
-});
-
-
-    
-            while (!requests[numberDevices].open("GET", url)) {
-              Serial.println("Wating for reqest to open");
-            }
-            requests[numberDevices].send();
-            
-
-
-  return true;
-}
+//   requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {
+//   if (readyState == readyStateDone) {
+//       if (debug)
+//         Serial.println(request->responseHTTPString());
+//   }
+//   });   
+//   while (!requests[numberDevices].open("GET", url)) {
+//     Serial.println("Wating for reqest to open");
+//   }
+//   requests[numberDevices].send();         
+//     return true;
+// }
 
 DeviceManager manager;
 bool CalibrationBegin = false;
