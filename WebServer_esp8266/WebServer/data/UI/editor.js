@@ -597,7 +597,7 @@ function OpenPopupMenu(e) {
  {
   menu.style.display="flex";
   e.style.color="#ffe205";
-}
+}notificationcontainer
 }
 
 function AddNewBlock() {

@@ -1,5 +1,5 @@
 window.addEventListener("load", () =>
-  document.querySelectorAll(".button2")[1].addEventListener("click", unwrap)
+  document.querySelectorAll(".button2").forEach(b=>b.addEventListener("click", unwrap))
 );
 
 let isUnwrapped = true;
