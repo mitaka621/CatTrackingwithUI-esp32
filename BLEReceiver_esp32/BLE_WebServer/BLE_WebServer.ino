@@ -8,7 +8,7 @@
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 
-const char *DeviceId = "couch";
+const char *DeviceId = "hgahhahaha";
 const char *DeviceType = "ESP32";
 
 

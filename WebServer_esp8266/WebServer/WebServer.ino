@@ -486,6 +486,46 @@ void setup() {
     file.close();
   });
 
+  server.on("/UI/resources/roomIcon.svg", HTTPMethod::HTTP_GET, []() {
+    server.keepAlive(false);
+    IPAddress clientIP = server.client().remoteIP();
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
+    File file = LittleFS.open("/UI/resources/roomIcon.svg", "r");
+    if (!file) {
+      server.send(404, "text/plain", "File not found");
+      return;
+    }
+
+    server.streamFile(file, "image/svg+xml");
+    file.close();
+  });
+
+  server.on("/UI/resources/wallIcon.svg", HTTPMethod::HTTP_GET, []() {
+    server.keepAlive(false);
+    IPAddress clientIP = server.client().remoteIP();
+    if (blacklistSet.find(clientIP.toString().c_str()) != blacklistSet.end()) {
+      if (debug)
+        Serial.println("Client IP is blacklisted");
+      server.send(403);
+      return;
+    }
+
+    File file = LittleFS.open("/UI/resources/wallIcon.svg", "r");
+    if (!file) {
+      server.send(404, "text/plain", "File not found");
+      return;
+    }
+
+    server.streamFile(file, "image/svg+xml");
+    file.close();
+  });
+
 
   server.on("/device", HTTPMethod::HTTP_POST, [&manager]() {
     IPAddress clientIP = server.client().remoteIP();
