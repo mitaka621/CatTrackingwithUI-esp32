@@ -12,7 +12,7 @@
 #define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
-const char *DeviceId = "hgahhahaha";
+const char *DeviceId = "on couch";
 const char *DeviceType = "ESP32";
 
 
@@ -299,6 +299,9 @@ void setup() {
   }
 
   Serial.println("WiFi connected");
+  server.on("/", HTTP_GET, []() {
+    server.send(200);
+  });
   server.on("/scan", HTTP_GET, [&distance, &avgRSSI, &isScanning, &txPower]() {
     //return defualt values when calibration is in progress (LED is blinking)
     if (isLEDOn) {

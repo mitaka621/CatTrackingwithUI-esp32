@@ -14,7 +14,7 @@ IPAddress dns(8, 8, 8, 8);
 
 ESP8266WebServer server(80);
 
-const bool debug = true;
+const bool debug = false;
 
 //Device struct config
 const int idLength = 50;
@@ -986,7 +986,15 @@ void setup() {
 }
 
 
-void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState) {
+void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState,const char* Ip) {
+  if (request->elapsedTime()>3000) {
+    Serial.print("Removing device - TIME OUT: ");
+    Serial.println(request->elapsedTime());
+    Serial.println(Id);
+    manager.removeDevice(Id);
+    currentRequests++;
+    return;
+  }
   if (readyState == readyStateDone) {
     if(!debug)
     Serial.print(".");
@@ -997,12 +1005,14 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       Serial.println(request->responseHTTPString());
 
     if (request->responseHTTPString() == "NOT_CONNECTED" || request->responseHTTPString() == "TIMEOUT") {
-      Serial.print("Removing device: ");
-      Serial.println(Id);
-      manager.removeDevice(Id);
+      if (!WiFi.isConnected()) {
+      Serial.print("Not connected!!!!!!");
+      }
+
       currentRequests++;
       return;
     }
+
     if (debug)
       Serial.print("Response: ");
     char* body = request->responseLongText();
@@ -1030,10 +1040,10 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       if (debug) {
         Serial.print("Failed to parse JSON - ");
         Serial.println(Id);
-      }
-
-      return;
+      }    
     }
+
+    delay(100);
   }
 }
 
@@ -1099,7 +1109,9 @@ void loop() {
   //if no curretn scan is active begin scanning for the beacon
   unsigned long currentMillis = millis();
 
-  if (currentRequests == expectedRequests && currentRequests != 0 && manager.Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 1000) {
+
+  if (currentRequests >= expectedRequests && currentRequests != 0 && manager.Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 1000) {
+    delay(100);
     previuosTime=currentMillis;
 
     expectedRequests = 0;
@@ -1111,18 +1123,19 @@ void loop() {
     if (debug)
       Serial.println(manager.Count());
     for (int i = 0; i < manager.Count(); i++) {
+
+     const Device currentDevice=manager.GetDevices()[i];
+
       if (debug)
         Serial.printf("Starting request number %d:\n", i);
       char url[50] = "http://";
-      strcat(url, manager.GetDevices()[i].ip);
+      strcat(url, currentDevice.ip);
       strcat(url, "/scan");
-
-      const char* id = manager.GetDevices()[i].id;
 
       requests[i].setDebug(false);
       requests[i].setTimeout(1);
-      requests[i].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
-        onRequestComplete(id, request, readyState);
+      requests[i].onReadyStateChange([currentDevice](void* optParm, AsyncHTTPRequest* request, int readyState) {
+        onRequestComplete(currentDevice.id, request, readyState,currentDevice.ip );
       });
       while (!requests[i].open("GET", url)) {
         Serial.println("Wating for requests to open");
