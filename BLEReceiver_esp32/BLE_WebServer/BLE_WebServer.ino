@@ -8,6 +8,10 @@
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 
+#define RSSIsampleSize 10  // Adjust as needed
+#define SCAN_INTERVAL 10000  // 1 minute in milliseconds
+#define LED 2
+
 const char *DeviceId = "hgahhahaha";
 const char *DeviceType = "ESP32";
 
@@ -18,69 +22,94 @@ const char *password = "mitko111";
 const char *ServerAddress = "http://192.168.0.9/";
 
 //mac address for the BLE beacon
-//const char beaconMAC[] = "e9:65:3c:b5:99:c1"; //big boy beacon
-const char beaconMAC[] = "d0:3e:ed:1e:9a:9b"; //small beacon 5.0
-
-int txPower = -44;  // Reference TxPower (RSSI) in dBm at 1 meter distance
-const int N = 2;    //const from 2 to 4 for accuracy
-
-NimBLEScan *pBLEScan;
-const int RSSIsampleSize = 1;
+//const  char* beaconMAC = "e9:65:3c:b5:99:c1"; //big boy beacon
+const char* beaconMAC = "d0:3e:ed:1e:9a:9b";  //small beacon 5.0
 int RSSIArr[RSSIsampleSize];
 int arrCount = 0;
-double distance;
+int avgRSSI = 0;
+double roundedDistance = 0;
+double distance = 0;
+int txPower = -59;  // Example Tx Power value, adjust as needed
+const double N = 2.0;  // Example environment factor, adjust as needed
 
-#define LED 2
+NimBLEScan* pBLEScan;
+
+QueueHandle_t scanResultQueue;
+
+struct ScanResult {
+  int rssi;
+  NimBLEAddress address;
+};
+
+//runs on core 0
+void scanTask(void *pvParameters) {
+  for(;;) {
+    Serial.println("Starting BLE scan...");
+    pBLEScan->start(0, nullptr, false);
+
+    int64_t startTime = esp_timer_get_time();
+    while (pBLEScan->isScanning()) {
+      if (esp_timer_get_time() - startTime >= 5000000&&arrCount==0) {
+        Serial.println("Failed to get RSSI from beacon. Out of range!");
+        roundedDistance = -1;
+        avgRSSI = -1;
+        pBLEScan->stop();
+        break;
+      }
+      delay(10);  // Small delay to avoid watchdog trigger
+    }
+
+    vTaskDelay(SCAN_INTERVAL / portTICK_PERIOD_MS);  // Delay for SCAN_INTERVAL before next scan
+  }
+}
 
 int compareAscending(const void *a, const void *b) {
   return (*(int *)b - *(int *)a);
 }
 
-double roundedDistance = -1;
-double avgRSSI = -1;
-class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
-  void onResult(BLEAdvertisedDevice *advertisedDevice) {
+//runs on core 0
+void handleScanResult(void *pvParameters) {
+  ScanResult result;
+  for(;;) {
+    if (xQueueReceive(scanResultQueue, &result, portMAX_DELAY) == pdTRUE) {     
+      if (result.rssi != 0) {
+        RSSIArr[arrCount] = result.rssi;
+        arrCount++;
+      }
+
+      if (arrCount == RSSIsampleSize) {  // Takes 'RSSIsampleSize' samples of the RSSI value
+        pBLEScan->stop();
+
+        arrCount = 0;
+        int SumRSSI = 0;
+
+        qsort(RSSIArr, RSSIsampleSize, sizeof(int), compareAscending);
+        for (int i = 0; i < RSSIsampleSize; i++) {
+          SumRSSI += RSSIArr[i];
+        }
+        avgRSSI = SumRSSI / RSSIsampleSize;
+
+        distance = pow(10, (txPower - avgRSSI) / (10.0 * N));
+        roundedDistance = round(distance * 2.0) / 2.0;        
+      }
+    }
+  }
+}
+
+//runs on core 1
+class MyAdvertisedDeviceCallbacks : public NimBLEAdvertisedDeviceCallbacks {
+  void onResult(NimBLEAdvertisedDevice* advertisedDevice) override {
     if (strcmp(beaconMAC, advertisedDevice->getAddress().toString().c_str()) == 0) {
       int rssi = advertisedDevice->getRSSI();
       if (rssi != 0) {
-        RSSIArr[arrCount] = rssi;
-        arrCount++;
+        ScanResult result;
+        result.rssi = rssi;
+        result.address = advertisedDevice->getAddress();
+        xQueueSend(scanResultQueue, &result, portMAX_DELAY);
       }
-    }
-
-    if (arrCount == RSSIsampleSize) {  //takes 'RSSIsampleSize' samples of the RSSI value
-      arrCount = 0;
-      int SumRSSI = 0;
-
-      qsort(RSSIArr, RSSIsampleSize, sizeof(int), compareAscending);
-      for (int i = 0; i < RSSIsampleSize; i++) {
-        SumRSSI += RSSIArr[i];
-      }
-      avgRSSI = SumRSSI / RSSIsampleSize;
-      // Serial.println("----------");
-      // Serial.print("Average RSSI: ");
-      // Serial.println(avgRSSI);
-      // Serial.print("Min RSSI: ");
-      // Serial.println(RSSIArr[0]);
-      // Serial.print("Max RSSI: ");
-      // Serial.println(RSSIArr[RSSIsampleSize - 1]);
-
-
-
-      distance = pow(10, (txPower - avgRSSI) / (10.0 * N));
-      //Serial.print("Distance (estimated): ");
-      //Serial.println(distance);
-
-      // Serial.print("Rounded distance (Real): ");
-      roundedDistance = round(distance * 2.0) / 2.0;
-      //Serial.println(roundedDistance);
-
-      pBLEScan->stop();
     }
   }
 };
-
-
 
 bool isConnected = false;
 void ConnectToMainServer() {
@@ -166,8 +195,6 @@ void CheckServerStatus() {
   }
 }
 
-
-
 WebServer server(80);
 
 bool isScanning = false;
@@ -175,7 +202,7 @@ bool isLEDOn = false;
 void setup() {
   pinMode(LED, OUTPUT);
   Serial.begin(115200);
-  NimBLEDevice::init("");
+
 
   if(!LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)){
         Serial.println("LittleFS Mount Failed");
@@ -205,9 +232,31 @@ void setup() {
     configFile.close();
   }
 
+  NimBLEDevice::init("ESP32_BLE");
   pBLEScan = NimBLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks(), true);
-  pBLEScan->setMaxResults(0);  // do not store the scan results, use callback only.
+  pBLEScan->setMaxResults(0);  // Do not store the scan results, use callback only
+
+  scanResultQueue = xQueueCreate(10, sizeof(ScanResult));
+
+  xTaskCreatePinnedToCore(
+    scanTask,   /* Task function */
+    "scanTask", /* Name of the task */
+    10000,      /* Stack size of the task */
+    NULL,       /* Parameter of the task */
+    1,          /* Priority of the task */
+    NULL,       /* Task handle to keep track of created task */
+    0);         /* Core where the task should run */
+
+  // Create the task to handle scan results on core 0
+  xTaskCreatePinnedToCore(
+    handleScanResult,   /* Task function */
+    "handleScanResult", /* Name of the task */
+    10000,              /* Stack size of the task */
+    NULL,               /* Parameter of the task */
+    1,                  /* Priority of the task */
+    NULL,               /* Task handle to keep track of created task */
+    0);                 /* Core where the task should run */
 
 
   WiFi.begin(ssid, password);
@@ -234,22 +283,6 @@ void setup() {
       // Send JSON response
       server.send(200, "application/json", jsonString);
       return;
-    }
-
-    isScanning = true;
-    //Serial.println();
-    //Serial.println("Proccesing new GET /scan");
-
-    pBLEScan->start(0, nullptr, false);
-
-    int64_t startTime = esp_timer_get_time();
-    while (pBLEScan->isScanning() == true) {
-      if (esp_timer_get_time() - startTime >= 5000000) {
-        Serial.println("Failed to get RSSI from beacon. Out of range!");
-        roundedDistance = -1;
-        avgRSSI = -1;
-        break;
-      }
     }
 
     // Create a JSON object
@@ -330,16 +363,12 @@ void setup() {
     server.send(200);
   });
 
-
-
   server.begin();
   Serial.print("Server started - ");
   Serial.println(WiFi.localIP());
 
   Serial.println("Handeling /scan requests (.):");
 }
-
-
 
 int64_t previuosTime = 0;
 int64_t blinkerTimer = 0;
