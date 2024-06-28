@@ -14,7 +14,7 @@ IPAddress dns(8, 8, 8, 8);
 
 ESP8266WebServer server(80);
 
-const bool debug = false;
+const bool debug = true;
 
 //Device struct config
 const int idLength = 50;
@@ -1092,13 +1092,15 @@ void onCalibrationComplete(const char* Id, AsyncHTTPRequest* request, int readyS
 }
 
 
-
+unsigned long previuosTime = 0;
 void loop() {
   server.handleClient();
 
   //if no curretn scan is active begin scanning for the beacon
+  unsigned long currentMillis = millis();
 
-  if (currentRequests == expectedRequests && currentRequests != 0 && manager.Count() > 0 && !CalibrationBegin) {
+  if (currentRequests == expectedRequests && currentRequests != 0 && manager.Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 1000) {
+    previuosTime=currentMillis;
 
     expectedRequests = 0;
     currentRequests = 0;
@@ -1118,6 +1120,7 @@ void loop() {
       const char* id = manager.GetDevices()[i].id;
 
       requests[i].setDebug(false);
+      requests[i].setTimeout(1);
       requests[i].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
         onRequestComplete(id, request, readyState);
       });
@@ -1125,8 +1128,8 @@ void loop() {
         Serial.println("Wating for requests to open");
       }
       expectedRequests++;
+      
       requests[i].send();
-      requests[i].setTimeout(10);
     }
 
     if (debug)

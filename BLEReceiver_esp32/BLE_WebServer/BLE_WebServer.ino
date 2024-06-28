@@ -9,7 +9,7 @@
 #define FORMAT_LITTLEFS_IF_FAILED true
 
 #define RSSIsampleSize 10  // Adjust as needed
-#define SCAN_INTERVAL 10000  // 1 minute in milliseconds
+#define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
 const char *DeviceId = "hgahhahaha";
@@ -31,6 +31,17 @@ double roundedDistance = 0;
 double distance = 0;
 int txPower = -59;  // Example Tx Power value, adjust as needed
 const double N = 2.0;  // Example environment factor, adjust as needed
+
+//Kalman filtering
+float x = 0.0;       // Initial state estimate
+float P = 1.0;       // Initial estimate error covariance
+float Q = 0.01;      // Initial process noise covariance
+float R = 0.1;       // Initial measurement noise covariance
+float K;             // Kalman gain
+float prevRSSI = 0;   // Previous RSSI measurement
+float variance = 0;   // Variance estimate
+float alpha = 0.001;  // Smoothing factor for variance
+float varianceThreshold = 1.0;  // Threshold to trigger parameter adjustment
 
 NimBLEScan* pBLEScan;
 
@@ -79,18 +90,39 @@ void handleScanResult(void *pvParameters) {
 
       if (arrCount == RSSIsampleSize) {  // Takes 'RSSIsampleSize' samples of the RSSI value
         pBLEScan->stop();
-
         arrCount = 0;
-        int SumRSSI = 0;
 
         qsort(RSSIArr, RSSIsampleSize, sizeof(int), compareAscending);
-        for (int i = 0; i < RSSIsampleSize; i++) {
-          SumRSSI += RSSIArr[i];
-        }
-        avgRSSI = SumRSSI / RSSIsampleSize;
+        int medianRSSI = RSSIArr[RSSIsampleSize / 2]; 
 
-        distance = pow(10, (txPower - avgRSSI) / (10.0 * N));
-        roundedDistance = round(distance * 2.0) / 2.0;        
+        // Update variance estimate
+        variance = (1 - alpha) * variance + alpha * (medianRSSI - prevRSSI) * (medianRSSI - prevRSSI);
+
+        // Adjust Q and R based on variance
+        if (variance > varianceThreshold) {
+            Q = 0.1;   // Increase process noise covariance Q
+            R = 0.5;   // Increase measurement noise covariance R
+        } else {
+            Q = 0.01;  // Default process noise covariance Q
+            R = 0.1;   // Default measurement noise covariance R
+        }
+
+        // Update previous RSSI
+        prevRSSI = medianRSSI;
+        avgRSSI=medianRSSI;
+
+        // Kalman filter prediction and update
+        float predictedRSSI = x;  // Previous state estimate
+        float errorCovariance = P + Q;  // Error covariance
+        K = errorCovariance / (errorCovariance + R);  // Kalman gain
+        x = predictedRSSI + K * ((float)medianRSSI - predictedRSSI);  // Updated state estimate
+        P = (1 - K) * errorCovariance;  // Updated estimate error covariance
+
+        // Calculate distance using updated RSSI estimate
+        distance = pow(10, (txPower - x) / (10.0 * N));
+        roundedDistance = round(distance * 2.0) / 2.0;
+
+        Serial.println(distance);
       }
     }
   }
