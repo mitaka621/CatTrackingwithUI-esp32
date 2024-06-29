@@ -14,7 +14,7 @@ IPAddress dns(8, 8, 8, 8);
 
 ESP8266WebServer server(80);
 
-const bool debug = true;
+const bool debug = false;
 
 //Device struct config
 const int idLength = 50;
@@ -959,7 +959,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
     Serial.println(Id);
     manager.removeDevice(Id);
 
-      
+    devicesWithActiveRequests[Id]=false;
     return;
   }
   if (readyState == readyStateDone) {
@@ -975,6 +975,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       if (!WiFi.isConnected()) {
       Serial.print("Not connected!!!!!!");
       }       
+      devicesWithActiveRequests[Id]=false;
       return;
     }
 
@@ -991,7 +992,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       if (!(doc.containsKey("id") && doc.containsKey("avgrssi") && doc.containsKey("distance") && doc.containsKey("rssi1m") && doc.size() == 4)) {
         if (debug)
           Serial.println("Invalid body of the request!");
-
+        devicesWithActiveRequests[Id]=false;
         return;
       }
 
@@ -1116,7 +1117,6 @@ void loop() {
       const char* devId=currentDevice.id;
 
       String s(devId);
-      Serial.println(s);
       requests[i].send();
       
       devicesWithActiveRequests[s]=true;

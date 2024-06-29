@@ -4,7 +4,7 @@ const deviceContainer = document.querySelector(".container2");
 deviceContainer.innerHTML = "";
 displayDevices();
 LoadMapFromServer();
-setInterval(displayDevices, 1000);
+setInterval(displayDevices, 2000);
 
 
 function displayDevices() {
