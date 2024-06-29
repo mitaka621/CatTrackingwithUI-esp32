@@ -14,7 +14,7 @@ IPAddress dns(8, 8, 8, 8);
 
 ESP8266WebServer server(80);
 
-const bool debug = false;
+const bool debug = true;
 
 //Device struct config
 const int idLength = 50;
@@ -23,6 +23,7 @@ const int typeLength = 10;
 const int numberDevices = 20;
 
 AsyncHTTPRequest requests[numberDevices + 1];
+JsonDocument devicesWithActiveRequests;
 
 struct Device {
   char id[idLength];
@@ -46,7 +47,6 @@ struct Device {
     type[sizeof(type) - 1] = '\0';  // Ensure null-termination
   }
 };
-
 
 
 class DeviceManager {
@@ -112,6 +112,10 @@ public:
       default:
         //final code executes even after case -1
         devices[counter++] = Device(Id, Ip, Type);
+
+        String s(Id);
+        devicesWithActiveRequests[s]=false;
+
         return 1;
     }
   }
@@ -233,42 +237,6 @@ String readFile(const String& filePath) {
 }
 
 
- WiFiUDP ntpUDP;
- NTPClient timeClient(ntpUDP, "pool.ntp.org");
-// bool SendNotification(char* title, char* content, int type) {
-
-//   timeClient.update();
-//   unsigned long dateTime = timeClient.getEpochTime();
-
-//   JsonDocument doc;
-//   doc["dataSource"] = "Cluster0";
-//   doc["database"] = "esp8266";
-//   doc["collection"] = "Notifications";
-
-//   doc["document"]["title"] = title;
-//   doc["document"]["content"] = content;
-//   doc["document"]["dateTime"] = dateTime;
-//   doc["document"]["isSeen"] = 0;
-//   doc["document"]["type"] = type;
-
-//   String body;
-//   serializeJson(doc, body);
-
-//   char* url = "https://worldtimeapi.org/api/timezone";
-
-//   requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {
-//   if (readyState == readyStateDone) {
-//       if (debug)
-//         Serial.println(request->responseHTTPString());
-//   }
-//   });   
-//   while (!requests[numberDevices].open("GET", url)) {
-//     Serial.println("Wating for reqest to open");
-//   }
-//   requests[numberDevices].send();         
-//     return true;
-// }
-
 DeviceManager manager;
 bool CalibrationBegin = false;
 int expectedRequests = 1;
@@ -276,6 +244,7 @@ int currentRequests = 1;
 std::unordered_set<std::string> blacklistSet;
 void setup() {
   Serial.begin(115200);
+
 
   if (!LittleFS.begin()) {
     if (debug)
@@ -345,7 +314,7 @@ void setup() {
     blacklistSet.insert(element.as<const char*>());
   }
 
-  WiFi.begin(config["ssid"].as<String>().c_str(), config["password"].as<String>().c_str());
+  WiFi.begin(config["ssid"]. as<const char*>(), config["password"]. as<const char*>());
   WiFi.config(staticIP, gateway, subnet, dns);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -359,9 +328,6 @@ void setup() {
     Serial.print("IP address: ");
   if (debug)
     Serial.println(WiFi.localIP());
-
-  timeClient.begin();
-  timeClient.setTimeOffset(7200);
 
   //endpoints configuration
   server.on("/", HTTPMethod::HTTP_GET, []() {
@@ -555,10 +521,10 @@ void setup() {
 
       if (debug)
         Serial.printf(
-          "DeviceId: %s\nClientIP: %s\nType: %s\n", doc["DeviceId"].as<String>().c_str(), doc["CurrentIP"].as<String>().c_str(), doc["Type"].as<String>().c_str());
+          "DeviceId: %s\nClientIP: %s\nType: %s\n", doc["DeviceId"]. as<const char*>(), doc["CurrentIP"]. as<const char*>(), doc["Type"]. as<const char*>());
 
 
-      switch (manager.AddNewDevice(doc["DeviceId"].as<String>().c_str(), doc["CurrentIP"].as<String>().c_str(), doc["Type"].as<String>().c_str())) {
+      switch (manager.AddNewDevice(doc["DeviceId"]. as<const char*>(), doc["CurrentIP"]. as<const char*>(), doc["Type"]. as<const char*>())) {
         case -1:
           server.send(409);
           if (debug)
@@ -568,7 +534,7 @@ void setup() {
         case 0:
           server.send(400);
           if (debug)
-            Serial.printf("Could not add device - %s", doc["DeviceId"].as<String>().c_str());
+            Serial.printf("Could not add device - %s", doc["DeviceId"]. as<const char*>());
 
           return;
         default:
@@ -629,7 +595,7 @@ void setup() {
         addToBlacklistJSON(clientIP.toString().c_str());
         return;
       }
-      switch (manager.isDeviceRegistered(doc["Id"].as<String>().c_str(), clientIP.toString().c_str())) {
+      switch (manager.isDeviceRegistered(doc["Id"]. as<const char*>(), clientIP.toString().c_str())) {
         case 0:
           if (debug)
             Serial.println("Device is NOT registered!");
@@ -639,7 +605,7 @@ void setup() {
         case -1:
           if (debug)
             Serial.println("Device Ip mismatch. It has to be regitered again!");
-          manager.removeDevice(doc["Id"].as<String>().c_str());
+          manager.removeDevice(doc["Id"]. as<const char*>());
           server.send(400);
 
           return;
@@ -729,11 +695,11 @@ void setup() {
         return;
       }
 
-      if (manager.isDeviceRegistered(doc["Id"].as<String>().c_str())) {
+      if (manager.isDeviceRegistered(doc["Id"]. as<const char*>())) {
         CalibrationBegin = true;
 
         for (int i = 0; i < manager.Count(); i++) {
-          if (strcmp(manager.GetDevices()[i].id, doc["Id"].as<String>().c_str()) == 0) {
+          if (strcmp(manager.GetDevices()[i].id, doc["Id"]. as<const char*>()) == 0) {
 
             char url[50] = "http://";
             strcat(url, manager.GetDevices()[i].ip);
@@ -806,7 +772,7 @@ void setup() {
         return;
       }
 
-      if (!manager.isDeviceRegistered(doc["Id"].as<String>().c_str())) {
+      if (!manager.isDeviceRegistered(doc["Id"]. as<const char*>())) {
         if (debug)
           Serial.println("Error-device is no longer added!");
         server.send(404);
@@ -814,7 +780,7 @@ void setup() {
       }
 
       for (int i = 0; i < manager.Count(); i++) {
-        if (strcmp(manager.GetDevices()[i].id, doc["Id"].as<String>().c_str()) == 0) {
+        if (strcmp(manager.GetDevices()[i].id, doc["Id"]. as<const char*>()) == 0) {
 
           char url[50] = "http://";
           strcat(url, manager.GetDevices()[i].ip);
@@ -824,7 +790,7 @@ void setup() {
           Serial.println(url);
 
           requests[numberDevices].setDebug(false);
-          const char* id = doc["Id"].as<String>().c_str();
+          const char* id = doc["Id"]. as<const char*>();
           requests[numberDevices].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
             onCalibrationComplete(id, request, readyState);
           });
@@ -890,10 +856,10 @@ void setup() {
       }
 
       CalibrationBegin = false;
-      if (manager.isDeviceRegistered(doc["Id"].as<String>().c_str())) {
+      if (manager.isDeviceRegistered(doc["Id"]. as<const char*>())) {
 
         for (int i = 0; i < manager.Count(); i++) {
-          if (strcmp(manager.GetDevices()[i].id, doc["Id"].as<String>().c_str()) == 0) {
+          if (strcmp(manager.GetDevices()[i].id, doc["Id"]. as<const char*>()) == 0) {
 
             char url[50] = "http://";
             strcat(url, manager.GetDevices()[i].ip);
@@ -992,7 +958,8 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
     Serial.println(request->elapsedTime());
     Serial.println(Id);
     manager.removeDevice(Id);
-    currentRequests++;
+
+      
     return;
   }
   if (readyState == readyStateDone) {
@@ -1007,9 +974,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
     if (request->responseHTTPString() == "NOT_CONNECTED" || request->responseHTTPString() == "TIMEOUT") {
       if (!WiFi.isConnected()) {
       Serial.print("Not connected!!!!!!");
-      }
-
-      currentRequests++;
+      }       
       return;
     }
 
@@ -1030,11 +995,11 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
         return;
       }
 
-      manager.addDistanceAndRSSIToDevice(doc["id"].as<String>().c_str(), doc["distance"].as<double>(), doc["avgrssi"].as<int>(), doc["rssi1m"].as<int>());
+      manager.addDistanceAndRSSIToDevice(doc["id"].as<const char*>(), doc["distance"].as<double>(), doc["avgrssi"].as<int>(), doc["rssi1m"].as<int>());
 
-      currentRequests++;
+        
     } else {
-      currentRequests++;
+        
       if (debug)
         Serial.println(error.c_str());
       if (debug) {
@@ -1042,8 +1007,9 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
         Serial.println(Id);
       }    
     }
+    devicesWithActiveRequests[Id]=false;
 
-    delay(100);
+
   }
 }
 
@@ -1109,9 +1075,8 @@ void loop() {
   //if no curretn scan is active begin scanning for the beacon
   unsigned long currentMillis = millis();
 
-
-  if (currentRequests >= expectedRequests && currentRequests != 0 && manager.Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 1000) {
-    delay(100);
+//currentRequests >= expectedRequests && currentRequests != 0 &&
+  if ( manager.Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 2000) {
     previuosTime=currentMillis;
 
     expectedRequests = 0;
@@ -1126,23 +1091,35 @@ void loop() {
 
      const Device currentDevice=manager.GetDevices()[i];
 
+
+
+    if (devicesWithActiveRequests[(const char*)currentDevice.id].as<bool>()) { // if true currently a request is executing to the given device
+    continue;
+    }
+    else{
+      requests[i].abort();
+    }
       if (debug)
         Serial.printf("Starting request number %d:\n", i);
       char url[50] = "http://";
       strcat(url, currentDevice.ip);
       strcat(url, "/scan");
 
-      requests[i].setDebug(false);
-      requests[i].setTimeout(1);
-      requests[i].onReadyStateChange([currentDevice](void* optParm, AsyncHTTPRequest* request, int readyState) {
+      requests[i].onReadyStateChange([=,&devicesWithActiveRequests](void* optParm, AsyncHTTPRequest* request, int readyState) {
         onRequestComplete(currentDevice.id, request, readyState,currentDevice.ip );
       });
+      
       while (!requests[i].open("GET", url)) {
         Serial.println("Wating for requests to open");
       }
-      expectedRequests++;
-      
+         
+      const char* devId=currentDevice.id;
+
+      String s(devId);
+      Serial.println(s);
       requests[i].send();
+      
+      devicesWithActiveRequests[s]=true;
     }
 
     if (debug)
