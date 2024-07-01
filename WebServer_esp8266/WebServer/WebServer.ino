@@ -25,29 +25,6 @@ const int numberDevices = 20;
 
 AsyncHTTPRequest requests[numberDevices + 1];
 
-struct Device {
-  char id[idLength];
-  char ip[ipLength];
-  char type[typeLength];
-  double distance = -1;
-  int avgRSSI = -1;
-  int RSSI1m = -1;
-
-  // Constructor that initializes Device with provided values
-  Device() {}
-  Device(const char* deviceId, const char* deviceIp, const char* deviceType) {
-
-    strncpy(id, deviceId, sizeof(id) - 1);
-    id[sizeof(id) - 1] = '\0';  // Ensure null-termination
-
-    strncpy(ip, deviceIp, sizeof(ip) - 1);
-    ip[sizeof(ip) - 1] = '\0';  // Ensure null-termination
-
-    strncpy(type, deviceType, sizeof(type) - 1);
-    type[sizeof(type) - 1] = '\0';  // Ensure null-termination
-  }
-};
-
 JsonDocument registeredDevices;   /*registeredDevices structure
                                     {
                                       deviceId {
@@ -109,19 +86,28 @@ public:
       return 0;
     }
 
+    String s(Id);
     switch (isDeviceRegistered(Id, Ip)) {
       case 1:
         if (debug)
           Serial.println("Device already added!");
+
+        registeredDevices[s]["isConnected"]=true;
+        registeredDevices[s]["isExecutingRequest"]=false;
         return -1;
       default:
-        registeredDevices[Id]["ip"]=Ip;
-        registeredDevices[Id]["type"]=Type;
-        registeredDevices[Id]["distance "]=-1;
-        registeredDevices[Id]["avgRSSI"]=-1;
-        registeredDevices[Id]["RSSI1m"]=-1;
-        registeredDevices[Id]["isConnected"]=true;
-        registeredDevices[Id]["isExecutingRequest"]=false;
+
+        
+        String ipStr(Ip);
+        String typeStr(Type);
+
+        registeredDevices[s]["ip"]=ipStr;
+        registeredDevices[s]["type"]=typeStr;
+        registeredDevices[s]["distance"]=-1;
+        registeredDevices[s]["avgRSSI"]=-1;
+        registeredDevices[s]["RSSI1m"]=-1;
+        registeredDevices[s]["isConnected"]=true;
+        registeredDevices[s]["isExecutingRequest"]=false;
         
         size_t ipLength = strlen(Ip);
         size_t urlSize = 7 + ipLength + 7; // "http://" + ip + "/scan\0"
@@ -138,7 +124,7 @@ public:
         strcat(url, Ip);
         strcat(url, "/scan");
 
-        registeredDevices[Id]["requestScanUrl"]=url;
+        registeredDevices[s]["requestScanUrl"]=url;
 
         serializeJson(registeredDevices, Serial);
         return 1;
@@ -146,7 +132,8 @@ public:
   }
 
   static bool isDeviceRegistered(const char* Id) {
-    if(registeredDevices.containsKey(Id)&&registeredDevices[Id]["isConnected"].as<bool>()){
+    String s(Id);
+    if(registeredDevices.containsKey(Id)&&registeredDevices[s]["isConnected"].as<bool>()){
       return true;
     }
 
@@ -157,11 +144,11 @@ public:
   //returns 0 if a device is not registered
   //returns -1 if the id is registered but the ip doesnt match
   static int isDeviceRegistered(const char* Id, const char* Ip) {
-    if (!registeredDevices.containsKey(Id)) {
+    String s(Id);
+    if (!registeredDevices.containsKey(s)) {
       return 0;
     }
-
-    if (strcmp(registeredDevices[Id]["ip"].as<const char*>(), Ip) != 0) {
+    if (strcmp(registeredDevices[s]["ip"].as<const char*>(), Ip) != 0) {
       return -1;
     }
 
@@ -173,7 +160,7 @@ public:
       Serial.println(registeredDevices.size());
     for (JsonPair kv : registeredDevices.as<JsonObject>()) {
       if (debug)
-        Serial.printf("%s(%s) - %s; Distance: %f; RSSI at 1m:%d\n", kv.key().c_str(), registeredDevices[kv.key()]["type"].as<const char*>(), registeredDevices[kv.key()]["ip"], registeredDevices[kv.key()]["distance"].as<double>(), registeredDevices[kv.key()]["RSSI1m"].as<int>());
+        Serial.printf("%s(%s) - %s; Distance: %f; RSSI at 1m:%d\n", kv.key().c_str(), registeredDevices[kv.key()]["type"].as<const char*>(), registeredDevices[kv.key()]["ip"].as<const char*>(), registeredDevices[kv.key()]["distance"].as<double>(), registeredDevices[kv.key()]["RSSI1m"].as<int>());
     }
   }
 };
@@ -588,7 +575,8 @@ void setup() {
           server.send(200);
           if (debug)
             Serial.println("Device is Registered");
-
+            registeredDevices[doc["Id"].as<const char*>()]["isConnected"]=true;
+            registeredDevices[doc["Id"].as<const char*>()]["isExecutingRequest"]=false;
           return;
       }
 
@@ -953,13 +941,14 @@ void setup() {
 
 
 void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState,const char* Ip) {
+  String s(Id);
   if (request->elapsedTime()>10000) {
     Serial.print("Removing device - TIME OUT: ");
     Serial.println(request->elapsedTime());
     Serial.println(Id);
-
-    registeredDevices[Id]["isConnected"]=false;
-    registeredDevices[Id]["isExecutingRequest"]=false;
+  
+    registeredDevices[s]["isConnected"]=false;
+    registeredDevices[s]["isExecutingRequest"]=false;
     return;
   }
   if (readyState == readyStateDone) {
@@ -975,7 +964,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       if (!WiFi.isConnected()) {
       Serial.print("Not connected!!!!!!");
       }       
-      registeredDevices[Id]["isExecutingRequest"]=false;
+      registeredDevices[s]["isExecutingRequest"]=false;
       return;
     }
 
@@ -987,20 +976,25 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
 
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, body);
+
     if (!error) {
       // Extract data from the JSON
       if (!(doc.containsKey("id") && doc.containsKey("avgrssi") && doc.containsKey("distance") && doc.containsKey("rssi1m") && doc.size() == 4)) {
         if (debug)
           Serial.println("Invalid body of the request!");
-        registeredDevices[Id]["isExecutingRequest"]=false;
+        registeredDevices[s]["isExecutingRequest"]=false;
         return;
       }
 
-      const char* extractedId=doc["id"];
+      double distance=doc["distance"];
+      int avgRSSI=doc["avgrssi"];
+      int rssi1m=doc["rssi1m"];
 
-      registeredDevices[extractedId]["distance"]=doc["distance"].as<double>();
-      registeredDevices[extractedId]["avgrssi"]=doc["avgrssi"].as<int>();
-      registeredDevices[extractedId]["RSSI1m"]=doc["rssi1m"].as<int>();
+      Serial.println(avgRSSI);
+
+      registeredDevices[s]["distance"]=distance;
+      registeredDevices[s]["avgRSSI"]=avgRSSI;
+      registeredDevices[s]["RSSI1m"]=rssi1m;
     } else {
         
       if (debug)
@@ -1010,9 +1004,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
         Serial.println(Id);
       }    
     }
-    registeredDevices[Id]["isExecutingRequest"]=false;
-
-
+    registeredDevices[s]["isExecutingRequest"]=false;
   }
 }
 
@@ -1051,7 +1043,8 @@ void onCalibrationComplete(const char* Id, AsyncHTTPRequest* request, int readyS
         return;
       }
 
-      registeredDevices[Id]["RSSI1m"]=doc["rssi1m"].as<int>();
+      String s(Id);
+      registeredDevices[s]["RSSI1m"]=doc["rssi1m"].as<int>();
 
       CalibrationBegin = false;
       return;
@@ -1084,10 +1077,11 @@ void loop() {
 
     if (debug)
       Serial.println("---Starting new scan---");
-
     if (debug)
       Serial.println(DeviceManager::Count());
-   
+    if(debug)
+      serializeJsonPretty(registeredDevices, Serial);
+
     int requestCounter=0;
     for (JsonPair kv : registeredDevices.as<JsonObject>()) {
       if (!DeviceManager::isDeviceRegistered(kv.key().c_str())) {
@@ -1118,8 +1112,5 @@ void loop() {
 
       requestCounter++;
     }
-
-    if (debug)
-      Serial.println("Waiting for all requests to complete.");
   }
 }
