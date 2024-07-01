@@ -127,6 +127,8 @@ public:
         registeredDevices[s]["requestScanUrl"]=url;
 
         serializeJson(registeredDevices, Serial);
+
+        free(url);
         return 1;
     }
   }
@@ -611,8 +613,9 @@ void setup() {
     JsonDocument doc;
     JsonArray array = doc.to<JsonArray>();
 
-    for (JsonPair kv : registeredDevices.as<JsonObject>()) {
-      JsonObject obj;
+    for (JsonPair kv : registeredDevices.as<JsonObject>()) {     
+      JsonObject obj = array.add<JsonObject>();
+
       obj["id"] =kv.key().c_str();
       obj["type"] = registeredDevices[kv.key()]["type"].as<const char*>();
       obj["distance"] = registeredDevices[kv.key()]["distance"].as<double>();
@@ -620,7 +623,7 @@ void setup() {
       obj["rssi1m"] = registeredDevices[kv.key()]["RSSI1m"].as<int>();
       obj["isConnected"] = registeredDevices[kv.key()]["isConnected"].as<bool>();
 
-      array.add<JsonObject>(obj);
+      serializeJsonPretty(obj, Serial);    
     }
 
     String jsonString;
@@ -942,6 +945,7 @@ void setup() {
 
 void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState,const char* Ip) {
   String s(Id);
+ 
   if (request->elapsedTime()>10000) {
     Serial.print("Removing device - TIME OUT: ");
     Serial.println(request->elapsedTime());
@@ -949,6 +953,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
   
     registeredDevices[s]["isConnected"]=false;
     registeredDevices[s]["isExecutingRequest"]=false;
+    s.clear();
     return;
   }
   if (readyState == readyStateDone) {
@@ -990,8 +995,6 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       int avgRSSI=doc["avgrssi"];
       int rssi1m=doc["rssi1m"];
 
-      Serial.println(avgRSSI);
-
       registeredDevices[s]["distance"]=distance;
       registeredDevices[s]["avgRSSI"]=avgRSSI;
       registeredDevices[s]["RSSI1m"]=rssi1m;
@@ -1005,6 +1008,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       }    
     }
     registeredDevices[s]["isExecutingRequest"]=false;
+    s.clear();
   }
 }
 
@@ -1074,13 +1078,16 @@ void loop() {
 
   if ( DeviceManager::Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 2000) {
     previuosTime=currentMillis;
+    size_t currentFreeHeap = ESP.getFreeHeap();
+    Serial.print("Free heap ");
+    Serial.println(currentFreeHeap);
 
     if (debug)
       Serial.println("---Starting new scan---");
     if (debug)
       Serial.println(DeviceManager::Count());
-    if(debug)
-      serializeJsonPretty(registeredDevices, Serial);
+    //if(debug)
+      //serializeJsonPretty(registeredDevices, Serial);
 
     int requestCounter=0;
     for (JsonPair kv : registeredDevices.as<JsonObject>()) {
