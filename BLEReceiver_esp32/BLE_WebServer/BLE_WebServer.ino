@@ -6,13 +6,14 @@
 #include "FS.h"
 #include <LittleFS.h>
 
+
 #define FORMAT_LITTLEFS_IF_FAILED true
 
 #define RSSIsampleSize 10  // Adjust as needed
 #define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
-const char *DeviceId = "on couch";
+const char *DeviceId = "couch";
 const char *DeviceType = "ESP32";
 
 

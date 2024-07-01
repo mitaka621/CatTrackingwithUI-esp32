@@ -7,6 +7,7 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
+
 IPAddress staticIP(192, 168, 0, 9);  // Set the desired static IP address
 IPAddress gateway(192, 168, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
@@ -953,7 +954,7 @@ void setup() {
 
 
 void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState,const char* Ip) {
-  if (request->elapsedTime()>3000) {
+  if (request->elapsedTime()>10000) {
     Serial.print("Removing device - TIME OUT: ");
     Serial.println(request->elapsedTime());
     Serial.println(Id);
@@ -1092,8 +1093,6 @@ void loop() {
 
      const Device currentDevice=manager.GetDevices()[i];
 
-
-
     if (devicesWithActiveRequests[(const char*)currentDevice.id].as<bool>()) { // if true currently a request is executing to the given device
     continue;
     }
@@ -1116,9 +1115,9 @@ void loop() {
          
       const char* devId=currentDevice.id;
 
-      String s(devId);
+     
       requests[i].send();
-      
+      String s(devId);
       devicesWithActiveRequests[s]=true;
     }
 
