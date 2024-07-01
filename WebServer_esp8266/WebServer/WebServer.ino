@@ -15,7 +15,7 @@ IPAddress dns(8, 8, 8, 8);
 
 ESP8266WebServer server(80);
 
-const bool debug = true;
+const bool debug = false;
 
 //Device struct config
 const int idLength = 50;
@@ -40,6 +40,25 @@ JsonDocument registeredDevices;   /*registeredDevices structure
                                       },
                                       .....
                                     }*/
+
+void saveDevicesToFile() {
+    // Open the file for writing
+    File file = LittleFS.open("/devicesStatus.json", "w+");
+    if (!file) {
+        Serial.println("Failed to open file for writing");
+        return;
+    }
+
+    // Serialize JSON document directly to the file stream
+    if (serializeJson(registeredDevices, file) == 0) {
+        Serial.println("Failed to write to file");
+    } else {
+        Serial.println("File written successfully");
+    }
+
+    // Close the file
+    file.close();
+}                                    
 
 class DeviceManager {
 public:
@@ -126,9 +145,9 @@ public:
 
         registeredDevices[s]["requestScanUrl"]=url;
 
-        serializeJson(registeredDevices, Serial);
-
         free(url);
+
+        saveDevicesToFile();
         return 1;
     }
   }
@@ -205,16 +224,42 @@ String readFile(const String& filePath) {
 }
 
 
+
+void loadDevicesFromFile() {
+    // Open the file for reading
+    File file = LittleFS.open("/devicesStatus.json", "r");
+    if (!file) {
+        Serial.println("Failed to open file for reading");
+        return;
+    }
+    // Parse the JSON file
+    DeserializationError error = deserializeJson(registeredDevices, file);
+    if (error) {
+        Serial.print("Failed to parse JSON file: ");
+        Serial.println(error.c_str());
+        return;
+    }
+
+    Serial.println("JSON file loaded successfully");
+
+    serializeJsonPretty(registeredDevices,Serial);
+
+    // Close the file
+    file.close();
+}
+
 bool CalibrationBegin = false;
 std::unordered_set<std::string> blacklistSet;
 void setup() {
   Serial.begin(115200);
-
+  
   if (!LittleFS.begin()) {
     if (debug)
       Serial.println("Failed to mount LittleFS");
     return;
   }
+
+  loadDevicesFromFile();
 
   //loading config from memory
   File configFile = LittleFS.open("/config.json", "r");
@@ -622,8 +667,6 @@ void setup() {
       obj["avgRSSI"] =registeredDevices[kv.key()]["avgRSSI"].as<int>();
       obj["rssi1m"] = registeredDevices[kv.key()]["RSSI1m"].as<int>();
       obj["isConnected"] = registeredDevices[kv.key()]["isConnected"].as<bool>();
-
-      serializeJsonPretty(obj, Serial);    
     }
 
     String jsonString;
@@ -943,17 +986,16 @@ void setup() {
 }
 
 
-void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState,const char* Ip) {
-  String s(Id);
+void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState) {
  
-  if (request->elapsedTime()>10000) {
+  if (request->elapsedTime()>10000|| request->responseHTTPString() == "TIMEOUT") {
     Serial.print("Removing device - TIME OUT: ");
     Serial.println(request->elapsedTime());
     Serial.println(Id);
   
-    registeredDevices[s]["isConnected"]=false;
-    registeredDevices[s]["isExecutingRequest"]=false;
-    s.clear();
+    registeredDevices[Id]["isConnected"]=false;
+    registeredDevices[Id]["isExecutingRequest"]=false;
+   
     return;
   }
   if (readyState == readyStateDone) {
@@ -965,11 +1007,11 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
     if (debug)
       Serial.println(request->responseHTTPString());
 
-    if (request->responseHTTPString() == "NOT_CONNECTED" || request->responseHTTPString() == "TIMEOUT") {
+    if (request->responseHTTPString() == "NOT_CONNECTED" ||request->responseHTTPString() == "UNKNOWN") {
       if (!WiFi.isConnected()) {
       Serial.print("Not connected!!!!!!");
       }       
-      registeredDevices[s]["isExecutingRequest"]=false;
+      registeredDevices[Id]["isExecutingRequest"]=false;
       return;
     }
 
@@ -981,13 +1023,13 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
 
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, body);
-
+    
     if (!error) {
       // Extract data from the JSON
       if (!(doc.containsKey("id") && doc.containsKey("avgrssi") && doc.containsKey("distance") && doc.containsKey("rssi1m") && doc.size() == 4)) {
         if (debug)
           Serial.println("Invalid body of the request!");
-        registeredDevices[s]["isExecutingRequest"]=false;
+        registeredDevices[Id]["isExecutingRequest"]=false;
         return;
       }
 
@@ -995,9 +1037,9 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       int avgRSSI=doc["avgrssi"];
       int rssi1m=doc["rssi1m"];
 
-      registeredDevices[s]["distance"]=distance;
-      registeredDevices[s]["avgRSSI"]=avgRSSI;
-      registeredDevices[s]["RSSI1m"]=rssi1m;
+      registeredDevices[Id]["distance"]=distance;
+      registeredDevices[Id]["avgRSSI"]=avgRSSI;
+      registeredDevices[Id]["RSSI1m"]=rssi1m;
     } else {
         
       if (debug)
@@ -1007,8 +1049,9 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
         Serial.println(Id);
       }    
     }
-    registeredDevices[s]["isExecutingRequest"]=false;
-    s.clear();
+    registeredDevices[Id]["isExecutingRequest"]=false;
+
+    doc.clear();
   }
 }
 
@@ -1076,18 +1119,20 @@ void loop() {
   //if no curretn scan is active begin scanning for the beacon
   unsigned long currentMillis = millis();
 
-  if ( DeviceManager::Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 2000) {
+  if ( DeviceManager::Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 1000) {
     previuosTime=currentMillis;
     size_t currentFreeHeap = ESP.getFreeHeap();
+    if (debug)
     Serial.print("Free heap ");
+    if (debug)
     Serial.println(currentFreeHeap);
 
     if (debug)
       Serial.println("---Starting new scan---");
     if (debug)
       Serial.println(DeviceManager::Count());
-    //if(debug)
-      //serializeJsonPretty(registeredDevices, Serial);
+    // if(debug)
+    //   serializeJsonPretty(registeredDevices, Serial);
 
     int requestCounter=0;
     for (JsonPair kv : registeredDevices.as<JsonObject>()) {
@@ -1107,7 +1152,7 @@ void loop() {
         Serial.printf("Starting request number %d:\n", requestCounter);
 
       requests[requestCounter].onReadyStateChange([=,&registeredDevices](void* optParm, AsyncHTTPRequest* request, int readyState) {
-        onRequestComplete(kv.key().c_str(), request, readyState,registeredDevices[kv.key()]["ip"].as<const char*>() );
+        onRequestComplete(kv.key().c_str(), request, readyState);
       });
       
       while (!requests[requestCounter].open("GET", registeredDevices[kv.key()]["requestScanUrl"].as<const char*>())) {
