@@ -15,7 +15,7 @@ IPAddress dns(8, 8, 8, 8);
 
 ESP8266WebServer server(80);
 
-const bool debug = false;
+const bool debug = true;
 
 //Device struct config
 const int idLength = 50;
@@ -24,7 +24,6 @@ const int typeLength = 10;
 const int numberDevices = 20;
 
 AsyncHTTPRequest requests[numberDevices + 1];
-JsonDocument devicesWithActiveRequests;
 
 struct Device {
   char id[idLength];
@@ -49,27 +48,35 @@ struct Device {
   }
 };
 
+JsonDocument registeredDevices;   /*registeredDevices structure
+                                    {
+                                      deviceId {
+                                        char id[idLength];
+                                        char ip[ipLength];
+                                        char type[typeLength];
+                                        double distance = -1;
+                                        int avgRSSI = -1;
+                                        int RSSI1m = -1;
+                                        bool isConnected
+                                        bool isExecutingRequest=false,
+                                        char requestScanUrl
+                                      },
+                                      .....
+                                    }*/
 
 class DeviceManager {
-private:
-  Device devices[numberDevices];
-  int counter = 0;
 public:
   DeviceManager(){};
 
-  int Count() const {
-    return counter;
-  }
-
-  const Device* GetDevices() const {
-    return devices;
+  static int Count() {
+    return registeredDevices.size();
   }
 
   //returns 1 if a device is succesfully added
   //returns 0 if there is a validation error
   //returns -1 if a device is already added
-  int AddNewDevice(const char* Id, const char* Ip, const char* Type) {
-    if (counter == numberDevices) {
+  static int AddNewDevice(const char* Id, const char* Ip, const char* Type) {
+    if (registeredDevices.size() == numberDevices) {
       if (debug)
         Serial.println("There is no more room for more devices!");
       return 0;
@@ -107,95 +114,66 @@ public:
         if (debug)
           Serial.println("Device already added!");
         return -1;
-      case -1:
-        removeDevice(Id);
-
       default:
-        //final code executes even after case -1
-        devices[counter++] = Device(Id, Ip, Type);
+        registeredDevices[Id]["ip"]=Ip;
+        registeredDevices[Id]["type"]=Type;
+        registeredDevices[Id]["distance "]=-1;
+        registeredDevices[Id]["avgRSSI"]=-1;
+        registeredDevices[Id]["RSSI1m"]=-1;
+        registeredDevices[Id]["isConnected"]=true;
+        registeredDevices[Id]["isExecutingRequest"]=false;
+        
+        size_t ipLength = strlen(Ip);
+        size_t urlSize = 7 + ipLength + 7; // "http://" + ip + "/scan\0"
+        
+        // Allocate memory for url dynamically
+        char* url = (char*)malloc(urlSize);
+        if (url == nullptr) {
+          Serial.println("Failed to allocate memory for url");
+          return 0;
+        }
+        
+        // Construct the URL
+        strcpy(url, "http://");
+        strcat(url, Ip);
+        strcat(url, "/scan");
 
-        String s(Id);
-        devicesWithActiveRequests[s]=false;
+        registeredDevices[Id]["requestScanUrl"]=url;
 
+        serializeJson(registeredDevices, Serial);
         return 1;
     }
   }
 
-  bool isDeviceRegistered(const char* Id) {
-    for (int i = 0; i < counter; i++) {
-      if (strcmp(devices[i].id, Id) == 0) {
-        return true;
-      }
+  static bool isDeviceRegistered(const char* Id) {
+    if(registeredDevices.containsKey(Id)&&registeredDevices[Id]["isConnected"].as<bool>()){
+      return true;
     }
+
     return false;
   }
 
   //returns 1 if a device is registered
   //returns 0 if a device is not registered
   //returns -1 if the id is registered but the ip doesnt match
-  int isDeviceRegistered(const char* Id, const char* Ip) {
-    for (int i = 0; i < counter; i++) {
-
-      if (strcmp(devices[i].id, Id) == 0) {
-        if (strcmp(devices[i].ip, Ip) != 0) {
-          return -1;
-        }
-        return 1;
-      }
+  static int isDeviceRegistered(const char* Id, const char* Ip) {
+    if (!registeredDevices.containsKey(Id)) {
+      return 0;
     }
-    return 0;
+
+    if (strcmp(registeredDevices[Id]["ip"].as<const char*>(), Ip) != 0) {
+      return -1;
+    }
+
+    return 1;
   }
 
-
-
-  bool removeDevice(const char* Id) {
-
-    for (int i = 0; i < counter; i++) {
-      if (strcmp(devices[i].id, Id) == 0) {
-
-        devices[i] = devices[--counter];
-        return true;
-      }
-    }
-    return false;
-  }
-
-  void addDistanceAndRSSIToDevice(const char* Id, double distance, int rssi, int rssi1m) {
-    for (int i = 0; i < counter; i++) {
-      if (strcmp(devices[i].id, Id) == 0) {
-        devices[i].distance = distance;
-        devices[i].avgRSSI = rssi;
-        devices[i].RSSI1m = rssi1m;
-        return;
-      }
-    }
-  }
-
-  void add1mRSSI(const char* Id, int newrssi) {
-    for (int i = 0; i < counter; i++) {
-      if (strcmp(devices[i].id, Id) == 0) {
-        devices[i].RSSI1m = newrssi;
-        return;
-      }
-    }
-  }
-
-  void resetDevice(const char* Id) {
-    for (int i = 0; i < counter; i++) {
-      if (strcmp(devices[i].id, Id) == 0) {
-        devices[i].distance = -1;
-        devices[i].avgRSSI = -1;
-        devices[i].RSSI1m = -1;
-      }
-    }
-  }
-
-  void Print() {
+  static void Print() {
     if (debug)
-      Serial.println(counter);
-    for (int i = 0; i < counter; i++) {
+      Serial.println(registeredDevices.size());
+    for (JsonPair kv : registeredDevices.as<JsonObject>()) {
       if (debug)
-        Serial.printf("%s(%s) - %s; Distance: %f; RSSI at 1m:%d\n", devices[i].id, devices[i].type, devices[i].ip, devices[i].distance, devices[i].RSSI1m);
+        Serial.printf("%s(%s) - %s; Distance: %f; RSSI at 1m:%d\n", kv.key().c_str(), registeredDevices[kv.key()]["type"].as<const char*>(), registeredDevices[kv.key()]["ip"], registeredDevices[kv.key()]["distance"].as<double>(), registeredDevices[kv.key()]["RSSI1m"].as<int>());
     }
   }
 };
@@ -238,14 +216,10 @@ String readFile(const String& filePath) {
 }
 
 
-DeviceManager manager;
 bool CalibrationBegin = false;
-int expectedRequests = 1;
-int currentRequests = 1;
 std::unordered_set<std::string> blacklistSet;
 void setup() {
   Serial.begin(115200);
-
 
   if (!LittleFS.begin()) {
     if (debug)
@@ -494,7 +468,7 @@ void setup() {
   });
 
 
-  server.on("/device", HTTPMethod::HTTP_POST, [&manager]() {
+  server.on("/device", HTTPMethod::HTTP_POST, [&registeredDevices]() {
     IPAddress clientIP = server.client().remoteIP();
 
     if (debug)
@@ -525,7 +499,7 @@ void setup() {
           "DeviceId: %s\nClientIP: %s\nType: %s\n", doc["DeviceId"]. as<const char*>(), doc["CurrentIP"]. as<const char*>(), doc["Type"]. as<const char*>());
 
 
-      switch (manager.AddNewDevice(doc["DeviceId"]. as<const char*>(), doc["CurrentIP"]. as<const char*>(), doc["Type"]. as<const char*>())) {
+      switch (DeviceManager::AddNewDevice(doc["DeviceId"]. as<const char*>(), doc["CurrentIP"]. as<const char*>(), doc["Type"]. as<const char*>())) {
         case -1:
           server.send(409);
           if (debug)
@@ -543,10 +517,8 @@ void setup() {
             Serial.println("Device succesfully added!");
           if (debug)
             Serial.println("Current devices:");
-          manager.Print();
+          DeviceManager::Print();
           server.send(200);
-
-          ;
       }
     }
 
@@ -561,7 +533,7 @@ void setup() {
     }
   });
 
-  server.on("/status", HTTPMethod::HTTP_POST, [&manager]() {
+  server.on("/status", HTTPMethod::HTTP_POST, [&registeredDevices]() {
     IPAddress clientIP = server.client().remoteIP();
 
     if (debug)
@@ -596,7 +568,7 @@ void setup() {
         addToBlacklistJSON(clientIP.toString().c_str());
         return;
       }
-      switch (manager.isDeviceRegistered(doc["Id"]. as<const char*>(), clientIP.toString().c_str())) {
+      switch (DeviceManager::isDeviceRegistered(doc["Id"]. as<const char*>(), clientIP.toString().c_str())) {
         case 0:
           if (debug)
             Serial.println("Device is NOT registered!");
@@ -606,7 +578,9 @@ void setup() {
         case -1:
           if (debug)
             Serial.println("Device Ip mismatch. It has to be regitered again!");
-          manager.removeDevice(doc["Id"]. as<const char*>());
+
+          registeredDevices[doc["Id"].as<const char*>()]["isConnected"]=false;
+          registeredDevices[doc["Id"].as<const char*>()]["isExecutingRequest"]=false;
           server.send(400);
 
           return;
@@ -633,7 +607,7 @@ void setup() {
   });
 
 
-  server.on("/distances", HTTPMethod::HTTP_GET, [&manager, &currentRequests, &expectedRequests]() {
+  server.on("/distances", HTTPMethod::HTTP_GET, [&registeredDevices]() {
     IPAddress clientIP = server.client().remoteIP();
 
     if (debug)
@@ -649,13 +623,16 @@ void setup() {
     JsonDocument doc;
     JsonArray array = doc.to<JsonArray>();
 
-    for (int i = 0; i < manager.Count(); i++) {
-      JsonObject obj = array.add<JsonObject>();
-      obj["id"] = manager.GetDevices()[i].id;
-      obj["type"] = manager.GetDevices()[i].type;
-      obj["distance"] = manager.GetDevices()[i].distance;
-      obj["avgRSSI"] = manager.GetDevices()[i].avgRSSI;
-      obj["rssi1m"] = manager.GetDevices()[i].RSSI1m;
+    for (JsonPair kv : registeredDevices.as<JsonObject>()) {
+      JsonObject obj;
+      obj["id"] =kv.key().c_str();
+      obj["type"] = registeredDevices[kv.key()]["type"].as<const char*>();
+      obj["distance"] = registeredDevices[kv.key()]["distance"].as<double>();
+      obj["avgRSSI"] =registeredDevices[kv.key()]["avgRSSI"].as<int>();
+      obj["rssi1m"] = registeredDevices[kv.key()]["RSSI1m"].as<int>();
+      obj["isConnected"] = registeredDevices[kv.key()]["isConnected"].as<bool>();
+
+      array.add<JsonObject>(obj);
     }
 
     String jsonString;
@@ -670,7 +647,7 @@ void setup() {
     server.send(200, "application/json", jsonString);
   });
 
-  server.on("/calibrationStatus", HTTP_POST, [&manager, &CalibrationBegin]() {
+  server.on("/calibrationStatus", HTTP_POST, [&registeredDevices, &CalibrationBegin]() {
     IPAddress clientIP = server.client().remoteIP();
 
     if (debug)
@@ -685,7 +662,18 @@ void setup() {
 
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, server.arg("plain"));
-    if (!error) {
+
+    if (error) {
+        if (debug) {
+            Serial.println("Failed to parse JSON");
+            Serial.println(error.c_str());
+        }
+        server.send(400);
+        blacklistSet.insert(clientIP.toString().c_str());
+        addToBlacklistJSON(clientIP.toString().c_str());
+        return;
+    }
+    
       // Extract data from the JSON
       if (!(doc.containsKey("Id") && doc.size() == 1)) {
         if (debug)
@@ -696,52 +684,53 @@ void setup() {
         return;
       }
 
-      if (manager.isDeviceRegistered(doc["Id"]. as<const char*>())) {
+      const char* recievedId=doc["Id"];
+
+      if (!DeviceManager::isDeviceRegistered(recievedId)) {
+        if (debug) {
+            Serial.println("Error: Device is no longer connected or not registered");
+        }
+        server.send(404);
+        return;
+      } 
+
         CalibrationBegin = true;
 
-        for (int i = 0; i < manager.Count(); i++) {
-          if (strcmp(manager.GetDevices()[i].id, doc["Id"]. as<const char*>()) == 0) {
+        const char* savedDeviceIp=registeredDevices[recievedId]["Ip"];
 
-            char url[50] = "http://";
-            strcat(url, manager.GetDevices()[i].ip);
-            strcat(url, "/blinkOn");
-
-            Serial.print("Sending a GET /blinkOn request to ");
-            Serial.println(url);
-
-            requests[numberDevices].setDebug(false);
-            requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {});
-            while (!requests[numberDevices].open("GET", url)) {
-              Serial.println("Wating for reqest to open");
-            }
-            requests[numberDevices].send();
-            server.send(200);
-            return;
-          }
+        size_t ipLength = strlen(savedDeviceIp);
+        size_t urlSize = 7 + ipLength + 8; // "http://" + ip + "/blinkOn\0"
+        
+        // Allocate memory for url dynamically
+        char* url = (char*)malloc(urlSize);
+        if (url == nullptr) {
+          Serial.println("Failed to allocate memory for url");
+          server.send(500, "text/plain", "Internal Server Error: Memory allocation failed");
+          return;
         }
+        
+        // Construct the URL
+        strcpy(url, "http://");
+        strcat(url, savedDeviceIp);
+        strcat(url, "/blinkOn");
+        
+        Serial.print("Sending a GET /blinkOn request to ");
+        Serial.println(url);
 
-        if (debug)
-          Serial.println("Error-device cannot be found!");
-        CalibrationBegin = false;
-        server.send(404);
+        requests[numberDevices].setDebug(false);
+        requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {});
+        while (!requests[numberDevices].open("GET", url)) {
+          Serial.println("Wating for reqest to open");
+        }
+        requests[numberDevices].send();
+        server.send(200);
+        free(url);
 
-      } else {
-        if (debug)
-          Serial.println("Error-device is no longer added!");
-        server.send(404);
-      }
-    } else {
-      if (debug)
-        Serial.println(error.c_str());
-      if (debug)
-        Serial.println("Failed to parse JSON");
-      server.send(400);
-      blacklistSet.insert(clientIP.toString().c_str());
-      addToBlacklistJSON(clientIP.toString().c_str());
-    }
+        return;
+
   });
 
-  server.on("/startCalibration", HTTP_POST, [&manager, &CalibrationBegin]() {
+  server.on("/startCalibration", HTTP_POST, [&registeredDevices, &CalibrationBegin]() {
     IPAddress clientIP = server.client().remoteIP();
 
     if (debug)
@@ -762,7 +751,16 @@ void setup() {
 
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, server.arg("plain"));
-    if (!error) {
+    if (error) {
+        if (debug) {
+            Serial.println("Failed to parse JSON");
+            Serial.println(error.c_str());
+        }
+        server.send(400);
+        blacklistSet.insert(clientIP.toString().c_str());
+        addToBlacklistJSON(clientIP.toString().c_str());
+        return;
+    }
       // Extract data from the JSON
       if (!(doc.containsKey("Id") && doc.size() == 1)) {
         if (debug)
@@ -773,58 +771,53 @@ void setup() {
         return;
       }
 
-      if (!manager.isDeviceRegistered(doc["Id"]. as<const char*>())) {
+      const char* recievedId=doc["Id"];
+      if (!DeviceManager::isDeviceRegistered(recievedId)) {
         if (debug)
           Serial.println("Error-device is no longer added!");
         server.send(404);
         return;
       }
 
-      for (int i = 0; i < manager.Count(); i++) {
-        if (strcmp(manager.GetDevices()[i].id, doc["Id"]. as<const char*>()) == 0) {
+      const char* savedDeviceIp=registeredDevices[recievedId]["Ip"];
 
-          char url[50] = "http://";
-          strcat(url, manager.GetDevices()[i].ip);
-          strcat(url, "/beginCalibration");
+      size_t ipLength = strlen(savedDeviceIp);
+      size_t urlSize = 7 + ipLength + 19; // "http://" + ip + "/beginCalibration\0"
+      
+      // Allocate memory for url dynamically
+      char* url = (char*)malloc(urlSize);
+      if (url == nullptr) {
+        Serial.println("Failed to allocate memory for url");
+        server.send(500, "text/plain", "Internal Server Error: Memory allocation failed");
+        return;
+      }
+      
+      // Construct the URL
+      strcpy(url, "http://");
+      strcat(url, savedDeviceIp);
+      strcat(url, "/beginCalibration");
+      
+      Serial.print("Sending a GET /beginCalibration request to ");
+      Serial.println(url);
 
-          Serial.print("Sending a GET /beginCalibration request to ");
-          Serial.println(url);
+      requests[numberDevices].setDebug(false);
+      const char* id = doc["Id"]. as<const char*>();
+      requests[numberDevices].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
+        onCalibrationComplete(id, request, readyState);
+      });
 
-          requests[numberDevices].setDebug(false);
-          const char* id = doc["Id"]. as<const char*>();
-          requests[numberDevices].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
-            onCalibrationComplete(id, request, readyState);
-          });
-
-          while (!requests[numberDevices].open("GET", url)) {
-            Serial.println("Wating for requests to open");
-          }
-
-          requests[numberDevices].send();
-          requests[numberDevices].setTimeout(10);
-
-          server.send(200);
-          return;
-        }
+      while (!requests[numberDevices].open("GET", url)) {
+        Serial.println("Wating for requests to open");
       }
 
-      Serial.print("Could not locate device!");
-      server.send(404);
-      return;
+      requests[numberDevices].send();
+      requests[numberDevices].setTimeout(10);
 
-
-    } else {
-      if (debug)
-        Serial.println(error.c_str());
-      if (debug)
-        Serial.println("Failed to parse JSON");
-      server.send(400);
-      blacklistSet.insert(clientIP.toString().c_str());
-      addToBlacklistJSON(clientIP.toString().c_str());
-    }
+      server.send(200);
+      free(url);
   });
 
-  server.on("/stopCalibration", HTTP_POST, [&manager, &CalibrationBegin]() {
+  server.on("/stopCalibration", HTTP_POST, [&registeredDevices, &CalibrationBegin]() {
     IPAddress clientIP = server.client().remoteIP();
 
     if (debug)
@@ -845,8 +838,18 @@ void setup() {
 
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, server.arg("plain"));
-    if (!error) {
-      // Extract data from the JSON
+
+    if (error) {
+        if (debug) {
+            Serial.println("Failed to parse JSON");
+            Serial.println(error.c_str());
+        }
+        server.send(400);
+        blacklistSet.insert(clientIP.toString().c_str());
+        addToBlacklistJSON(clientIP.toString().c_str());
+        return;
+    }
+
       if (!(doc.containsKey("Id") && doc.size() == 1)) {
         if (debug)
           Serial.println("Invalid body of the request!");
@@ -857,51 +860,47 @@ void setup() {
       }
 
       CalibrationBegin = false;
-      if (manager.isDeviceRegistered(doc["Id"]. as<const char*>())) {
 
-        for (int i = 0; i < manager.Count(); i++) {
-          if (strcmp(manager.GetDevices()[i].id, doc["Id"]. as<const char*>()) == 0) {
-
-            char url[50] = "http://";
-            strcat(url, manager.GetDevices()[i].ip);
-            strcat(url, "/blinkOff");
-
-            Serial.print("Sending a GET /blinkOff request to ");
-            Serial.println(url);
-
-            requests[numberDevices].setDebug(false);
-            requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {});
-
-            while (!requests[numberDevices].open("GET", url)) {
-              Serial.println("Wating for the request to open");
-            }
-
-            requests[numberDevices].send();
-            Serial.println("Calibration canceled!");
-            server.send(200);
-            return;
-          }
-        }
-
-        if (debug)
-          Serial.println("Error-device cannot be found!");
-        CalibrationBegin = false;
-        server.send(404);
-
-      } else {
+      const char* recievedId=doc["Id"];
+      if (!DeviceManager::isDeviceRegistered(recievedId)) {
         if (debug)
           Serial.println("Error-device is no longer added!");
         server.send(404);
+        return;
       }
-    } else {
-      if (debug)
-        Serial.println(error.c_str());
-      if (debug)
-        Serial.println("Failed to parse JSON");
-      server.send(400);
-      blacklistSet.insert(clientIP.toString().c_str());
-      addToBlacklistJSON(clientIP.toString().c_str());
-    }
+
+      const char* savedDeviceIp=registeredDevices[recievedId]["Ip"];
+
+      size_t ipLength = strlen(savedDeviceIp);
+      size_t urlSize = 7 + ipLength + 11; // "http://" + ip + "/blinkOff\0"
+      
+      // Allocate memory for url dynamically
+      char* url = (char*)malloc(urlSize);
+      if (url == nullptr) {
+        Serial.println("Failed to allocate memory for url");
+        server.send(500, "text/plain", "Internal Server Error: Memory allocation failed");
+        return;
+      }
+      
+      // Construct the URL
+      strcpy(url, "http://");
+      strcat(url, savedDeviceIp);
+      strcat(url, "/blinkOff");
+      
+      Serial.print("Sending a GET /blinkOff request to ");
+      Serial.println(url);
+
+      requests[numberDevices].setDebug(false);
+      requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {});
+
+      while (!requests[numberDevices].open("GET", url)) {
+        Serial.println("Wating for the request to open");
+      }
+
+      requests[numberDevices].send();
+      Serial.println("Calibration canceled!");
+      server.send(200);
+      free(url);
   });
 
   server.on("/map", HTTP_POST, []() {
@@ -958,9 +957,9 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
     Serial.print("Removing device - TIME OUT: ");
     Serial.println(request->elapsedTime());
     Serial.println(Id);
-    manager.removeDevice(Id);
 
-    devicesWithActiveRequests[Id]=false;
+    registeredDevices[Id]["isConnected"]=false;
+    registeredDevices[Id]["isExecutingRequest"]=false;
     return;
   }
   if (readyState == readyStateDone) {
@@ -976,7 +975,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       if (!WiFi.isConnected()) {
       Serial.print("Not connected!!!!!!");
       }       
-      devicesWithActiveRequests[Id]=false;
+      registeredDevices[Id]["isExecutingRequest"]=false;
       return;
     }
 
@@ -993,13 +992,15 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
       if (!(doc.containsKey("id") && doc.containsKey("avgrssi") && doc.containsKey("distance") && doc.containsKey("rssi1m") && doc.size() == 4)) {
         if (debug)
           Serial.println("Invalid body of the request!");
-        devicesWithActiveRequests[Id]=false;
+        registeredDevices[Id]["isExecutingRequest"]=false;
         return;
       }
 
-      manager.addDistanceAndRSSIToDevice(doc["id"].as<const char*>(), doc["distance"].as<double>(), doc["avgrssi"].as<int>(), doc["rssi1m"].as<int>());
+      const char* extractedId=doc["id"];
 
-        
+      registeredDevices[extractedId]["distance"]=doc["distance"].as<double>();
+      registeredDevices[extractedId]["avgrssi"]=doc["avgrssi"].as<int>();
+      registeredDevices[extractedId]["RSSI1m"]=doc["rssi1m"].as<int>();
     } else {
         
       if (debug)
@@ -1009,7 +1010,7 @@ void onRequestComplete(const char* Id, AsyncHTTPRequest* request, int readyState
         Serial.println(Id);
       }    
     }
-    devicesWithActiveRequests[Id]=false;
+    registeredDevices[Id]["isExecutingRequest"]=false;
 
 
   }
@@ -1050,7 +1051,8 @@ void onCalibrationComplete(const char* Id, AsyncHTTPRequest* request, int readyS
         return;
       }
 
-      manager.add1mRSSI(Id, doc["rssi1m"].as<int>());
+      registeredDevices[Id]["RSSI1m"]=doc["rssi1m"].as<int>();
+
       CalibrationBegin = false;
       return;
 
@@ -1077,48 +1079,44 @@ void loop() {
   //if no curretn scan is active begin scanning for the beacon
   unsigned long currentMillis = millis();
 
-//currentRequests >= expectedRequests && currentRequests != 0 &&
-  if ( manager.Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 2000) {
+  if ( DeviceManager::Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 2000) {
     previuosTime=currentMillis;
-
-    expectedRequests = 0;
-    currentRequests = 0;
 
     if (debug)
       Serial.println("---Starting new scan---");
 
     if (debug)
-      Serial.println(manager.Count());
-    for (int i = 0; i < manager.Count(); i++) {
+      Serial.println(DeviceManager::Count());
+   
+    int requestCounter=0;
+    for (JsonPair kv : registeredDevices.as<JsonObject>()) {
+      if (!DeviceManager::isDeviceRegistered(kv.key().c_str())) {
+        requestCounter++;
+        continue;
+      }
 
-     const Device currentDevice=manager.GetDevices()[i];
+      if (registeredDevices[kv.key()]["isExecutingRequest"].as<bool>()) { // if true currently a request is executing to the given device
+        requestCounter++;
+        continue;
+      }else{
+        requests[requestCounter].abort();
+      }
 
-    if (devicesWithActiveRequests[(const char*)currentDevice.id].as<bool>()) { // if true currently a request is executing to the given device
-    continue;
-    }
-    else{
-      requests[i].abort();
-    }
       if (debug)
-        Serial.printf("Starting request number %d:\n", i);
-      char url[50] = "http://";
-      strcat(url, currentDevice.ip);
-      strcat(url, "/scan");
+        Serial.printf("Starting request number %d:\n", requestCounter);
 
-      requests[i].onReadyStateChange([=,&devicesWithActiveRequests](void* optParm, AsyncHTTPRequest* request, int readyState) {
-        onRequestComplete(currentDevice.id, request, readyState,currentDevice.ip );
+      requests[requestCounter].onReadyStateChange([=,&registeredDevices](void* optParm, AsyncHTTPRequest* request, int readyState) {
+        onRequestComplete(kv.key().c_str(), request, readyState,registeredDevices[kv.key()]["ip"].as<const char*>() );
       });
       
-      while (!requests[i].open("GET", url)) {
+      while (!requests[requestCounter].open("GET", registeredDevices[kv.key()]["requestScanUrl"].as<const char*>())) {
         Serial.println("Wating for requests to open");
       }
-         
-      const char* devId=currentDevice.id;
+             
+      requests[requestCounter].send();
+      registeredDevices[kv.key()]["isExecutingRequest"]=true;
 
-     
-      requests[i].send();
-      String s(devId);
-      devicesWithActiveRequests[s]=true;
+      requestCounter++;
     }
 
     if (debug)
