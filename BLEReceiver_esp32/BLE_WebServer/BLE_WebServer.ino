@@ -225,6 +225,11 @@ void CheckServerStatus() {
     http.end();
   } else {
     Serial.println("Not connected to WiFi");
+    WiFi.reconnect();
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(1000);
+      Serial.println("Connecting to WiFi after losing connection...");
+    }
   }
 }
 
@@ -293,13 +298,17 @@ void setup() {
 
 
   WiFi.begin(ssid, password);
-  WiFi.setAutoReconnect(true);
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");
   }
 
   Serial.println("WiFi connected");
+
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
   server.on("/", HTTP_GET, []() {
     server.send(200);
   });
