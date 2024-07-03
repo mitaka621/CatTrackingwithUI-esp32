@@ -44,19 +44,20 @@ JsonDocument registeredDevices;   /*registeredDevices structure
 int requsetSetupCounter=0;
 String IdsArray[numberDevices];
 void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState) { 
-  if (request->elapsedTime()>10000|| request->responseHTTPString() == "TIMEOUT") {
-    String& Id =  *static_cast<String*>(optParm);
-    Serial.print("Removing device - TIME OUT: ");
-    Serial.println(request->elapsedTime());
-    Serial.println(Id);
-  
-    registeredDevices[Id]["isConnected"]=false;
-    registeredDevices[Id]["isExecutingRequest"]=false;
-
-    return;
-  }
   if (readyState == readyStateDone) {
+     if (request->elapsedTime()>10000|| request->responseHTTPString() == "TIMEOUT") {
+        String& Id =  *static_cast<String*>(optParm);
+        Serial.print("Removing device - TIME OUT: ");
+        Serial.println(request->elapsedTime());
+        Serial.println(Id);
+      
+        registeredDevices[Id]["isConnected"]=false;
+        registeredDevices[Id]["isExecutingRequest"]=false;
+
+        return;
+      }
     String& Id = *static_cast<String*>(optParm);
+    if(debug)
     Serial.println(Id);
     if(!debug)
     Serial.print(".");
@@ -105,6 +106,7 @@ void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState)
         Serial.println(Id);
       }    
     }
+
     registeredDevices[Id]["isExecutingRequest"]=false;
   }
 }
@@ -194,7 +196,8 @@ public:
         strcat(url, "/scan");
 
         registeredDevices[s]["requestScanUrl"]=url;
-
+        
+        if(debug)
         serializeJson(registeredDevices, Serial);
         free(url);
 
@@ -865,7 +868,6 @@ void setup() {
       Serial.print("Sending a GET /beginCalibration request to ");
       Serial.println(url);
 
-      requests[numberDevices].setDebug(false);
       const char* id = doc["Id"]. as<const char*>();
       requests[numberDevices].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
         onCalibrationComplete(id, request, readyState);
@@ -1080,13 +1082,15 @@ unsigned long previuosTime = 0;
 void loop() {
   server.handleClient();
 
-  //if no curretn scan is active begin scanning for the beacon
   unsigned long currentMillis = millis();
 
+  //1 sec interval on which we try to send a request to all esp32 devices currently not executing a request
   if ( DeviceManager::Count() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 2000) {
     previuosTime=currentMillis;
     size_t currentFreeHeap = ESP.getFreeHeap();
+    if (debug)
     Serial.print("Free heap ");
+    if (debug)
     Serial.println(currentFreeHeap);
 
     if (debug)
@@ -1103,22 +1107,21 @@ void loop() {
         continue;
       }
 
-      if (registeredDevices[kv.key()]["isExecutingRequest"].as<bool>()) { // if true currently a request is executing to the given device
+      if (registeredDevices[kv.key()]["isExecutingRequest"].as<bool>()) { // if true currently a request is executing to the given device, continuing to the next
         requestCounter++;
         continue;
       }else{
-        requests[requestCounter].abort();
+        requests[requestCounter].abort(); //stop entirely the already executed request just in case
       }
 
       if (debug)
         Serial.printf("Starting request number %d:\n", requestCounter);
 
-      
-      
-      while (!requests[requestCounter].open("GET", registeredDevices[kv.key()]["requestScanUrl"].as<const char*>())) {
+      if (!requests[requestCounter].open("GET", registeredDevices[kv.key()]["requestScanUrl"].as<const char*>())) {
         Serial.println("Wating for requests to open");
+        continue;
       }
-             
+                  
       requests[requestCounter].send();
       registeredDevices[kv.key()]["isExecutingRequest"]=true;
 
