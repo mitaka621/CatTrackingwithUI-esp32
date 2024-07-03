@@ -225,7 +225,10 @@ void CheckServerStatus() {
     http.end();
   } else {
     Serial.println("Not connected to WiFi");
-    WiFi.reconnect();
+
+    WiFi.disconnect();
+    WiFi.begin(ssid, password);
+    
     while (WiFi.status() != WL_CONNECTED) {
       delay(1000);
       Serial.println("Connecting to WiFi after losing connection...");
