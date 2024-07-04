@@ -16,7 +16,7 @@ IPAddress dns(8, 8, 8, 8);
 
 AsyncWebServer server(80);
 
-const bool debug = false;
+const bool debug = true;
 
 // Device struct config
 const int idLength = 50;
