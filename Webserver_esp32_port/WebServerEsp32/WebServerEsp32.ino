@@ -47,6 +47,71 @@ String IdsArray[numberDevices];
 
 SemaphoreHandle_t xMutex;
 
+void sendGetScanRequests(){
+  if (registeredDevices.size() > 0) {
+      size_t currentFreeHeap = ESP.getFreeHeap();
+      if(debug)
+      Serial.print("Free heap: ");
+      if(debug)
+      Serial.println(currentFreeHeap);
+      
+      xSemaphoreTake(xMutex, portMAX_DELAY);
+
+      if(debug)
+      Serial.println("---Starting new scan---");
+      if(debug)
+      Serial.println(registeredDevices.size());
+      if(debug)
+      serializeJsonPretty(registeredDevices, Serial);
+      
+      int requestCounter = 0;
+      for (JsonPair kv : registeredDevices.as<JsonObject>()) {
+        if (!registeredDevices.containsKey(kv.key())) {
+          requestCounter++;
+          continue;
+        }
+        
+        if (registeredDevices[kv.key()]["isExecutingRequest"].as<bool>()) {
+          requestCounter++;
+          continue;
+        }
+
+        // Ensure previous request is properly handled before starting a new one
+        if (requests[requestCounter].readyState() == readyStateDone || requests[requestCounter].readyState() == readyStateUnsent) {
+          requests[requestCounter].abort();
+          if (!requests[requestCounter].open("GET", registeredDevices[kv.key()]["requestScanUrl"].as<const char*>())) {
+            Serial.println("Failed to open request");
+            continue;
+          }
+
+          if(debug)
+          Serial.printf("Starting request number %d:\n", requestCounter);
+          requests[requestCounter].send();
+          registeredDevices[kv.key()]["isExecutingRequest"] = true;
+          requestCounter++;
+        }      
+        delay(500);
+      }
+
+      xSemaphoreGive(xMutex);
+    }
+}
+
+void abortAllSentRequests(){
+  int count=0;
+  for (JsonPair kv : registeredDevices.as<JsonObject>()) {
+    if (!registeredDevices.containsKey(kv.key())) {
+      count++;
+      continue;
+    }
+    
+    if (requests[count].readyState() == readyStateDone || requests[count].readyState() == readyStateUnsent) {
+      requests[count].abort();          
+    }      
+  }
+}
+
+
 void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState) {
   if (readyState == readyStateDone) {
     String& Id = *static_cast<String*>(optParm);
@@ -327,8 +392,6 @@ void setup() {
     return;
   }
 
-  readJSONFromFile("/savedDevices.json",registeredDevices);
-
   //loading config from memory
   File configFile = LittleFS.open("/config.json", "r");
   String contents = configFile.readString();
@@ -437,69 +500,6 @@ void setup() {
       }
     }
   });
-
-  // server.on("/status", HTTP_POST, [&](AsyncWebServerRequest *request) {
-  //   IPAddress clientIP = request->client()->remoteIP();
-
-  //   if (debug)
-  //     Serial.printf("\n\n---Proccesing new POST /status request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), request->arg("plain").c_str());   
-
-  //   if (!request->hasArg("plain")) {
-  //     request->send(400);
-  //     if (debug)
-  //       Serial.println("No data arg avalible");
-       
-  //     return;
-  //   }
-
-  //   JsonDocument doc;
-  //   DeserializationError error = deserializeJson(doc, request->arg("plain").c_str());
-  //   if (!error) {
-  //     // Extract data from the JSON
-
-  //     if (!(doc.containsKey("Id") && doc.size() == 1)) {
-  //       if (debug)
-  //         Serial.println("Invalid body of the request!");
-  //       request->send(400);         
-  //       return;
-  //     }
-  //     switch (DeviceManager::isDeviceRegistered(doc["Id"]. as<const char*>(), clientIP.toString().c_str())) {
-  //       case 0:
-  //         if (debug)
-  //           Serial.println("Device is NOT registered!");
-  //         request->send(400);
-
-  //         return;
-  //       case -1:
-  //         if (debug)
-  //           Serial.println("Device Ip mismatch. It has to be regitered again!");
-
-  //         registeredDevices[doc["Id"].as<const char*>()]["isConnected"]=false;
-  //         registeredDevices[doc["Id"].as<const char*>()]["isExecutingRequest"]=false;
-  //         request->send(400);
-
-  //         return;
-  //       default:
-  //         request->send(200);
-  //         if (debug)
-  //           Serial.println("Device is Registered");
-  //           registeredDevices[doc["Id"].as<const char*>()]["isConnected"]=true;
-  //           registeredDevices[doc["Id"].as<const char*>()]["isExecutingRequest"]=false;
-  //         return;
-  //     }
-
-  //   }
-
-  //   else {
-  //     if (debug)
-  //       Serial.println(error.c_str());
-  //     if (debug)
-  //       Serial.println("Failed to parse JSON");
-  //     request->send(400);
-       
-  //     return;
-  //   }
-  // });
 
   server.on("/distances", HTTP_GET, [&](AsyncWebServerRequest *request) {
     IPAddress clientIP = request->client()->remoteIP();
@@ -801,9 +801,16 @@ void setup() {
     map.close();
   });
 
+  readJSONFromFile("/savedDevices.json",registeredDevices);
+  abortAllSentRequests();
+  sendGetScanRequests();
+
+  delay(2000);
   server.begin();
   if (debug)
     Serial.println("HTTP server started");
+
+
 }
 
 
@@ -869,52 +876,9 @@ void loop() {
     unsigned long currentMillis = millis();
 
     // 2-second interval for sending requests
-    if (registeredDevices.size() > 0 && !CalibrationBegin && currentMillis - previuosTime >= 2000) {
+    if (!CalibrationBegin && currentMillis - previuosTime >= 2000) {
       previuosTime = currentMillis;
 
-      size_t currentFreeHeap = ESP.getFreeHeap();
-      if(debug)
-      Serial.print("Free heap: ");
-      if(debug)
-      Serial.println(currentFreeHeap);
-      
-      xSemaphoreTake(xMutex, portMAX_DELAY);
-
-      if(debug)
-      Serial.println("---Starting new scan---");
-      if(debug)
-      Serial.println(registeredDevices.size());
-      if(debug)
-      serializeJsonPretty(registeredDevices, Serial);
-      
-      int requestCounter = 0;
-      for (JsonPair kv : registeredDevices.as<JsonObject>()) {
-        if (!registeredDevices.containsKey(kv.key())) {
-          requestCounter++;
-          continue;
-        }
-        
-        if (registeredDevices[kv.key()]["isExecutingRequest"].as<bool>()) {
-          requestCounter++;
-          continue;
-        }
-
-        // Ensure previous request is properly handled before starting a new one
-        if (requests[requestCounter].readyState() == readyStateDone || requests[requestCounter].readyState() == readyStateUnsent) {
-          requests[requestCounter].abort();
-          if (!requests[requestCounter].open("GET", registeredDevices[kv.key()]["requestScanUrl"].as<const char*>())) {
-            Serial.println("Failed to open request");
-            continue;
-          }
-
-          if(debug)
-          Serial.printf("Starting request number %d:\n", requestCounter);
-          requests[requestCounter].send();
-          registeredDevices[kv.key()]["isExecutingRequest"] = true;
-          requestCounter++;
-        }      
-      }
-
-      xSemaphoreGive(xMutex);
+      sendGetScanRequests();
     }
 }
