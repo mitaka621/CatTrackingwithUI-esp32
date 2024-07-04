@@ -13,7 +13,7 @@
 #define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
-const char *DeviceId = "couch";
+const char *DeviceId = "psu";
 const char *DeviceType = "ESP32";
 
 
@@ -188,43 +188,6 @@ void ConnectToMainServer() {
     http.end();
   } else {
     Serial.println("Not connected to WiFi");
-  }
-}
-
-void CheckServerStatus() {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-
-    JsonDocument jsonDoc;
-
-    jsonDoc["Id"] = DeviceId;
-
-    char jsonString[200];
-    serializeJson(jsonDoc, jsonString);
-
-    char fullURL[300];
-    strcpy(fullURL, ServerAddress);
-    strcat(fullURL, "status");
-
-
-    String str(fullURL);
-    Serial.printf("Sending a POST request to %s\n", fullURL);
-    http.begin(fullURL);
-    int httpResponseCode = http.POST(jsonString);
-
-
-    if (httpResponseCode == 200) {
-      Serial.println("Status OK");
-      return;
-    }
-
-    Serial.print("Status NOT OK. Trying to register device again... - status code ");
-    Serial.println(httpResponseCode);
-    isConnected = false;
-
-    http.end();
-  } else {
-    Serial.println("Not connected to WiFi");
 
     WiFi.disconnect();
     WiFi.begin(ssid, password);
@@ -236,10 +199,56 @@ void CheckServerStatus() {
   }
 }
 
+// void CheckServerStatus() {
+//   if (WiFi.status() == WL_CONNECTED) {
+//     HTTPClient http;
+
+//     JsonDocument jsonDoc;
+
+//     jsonDoc["Id"] = DeviceId;
+
+//     char jsonString[200];
+//     serializeJson(jsonDoc, jsonString);
+
+//     char fullURL[300];
+//     strcpy(fullURL, ServerAddress);
+//     strcat(fullURL, "status");
+
+
+//     String str(fullURL);
+//     Serial.printf("Sending a POST request to %s\n", fullURL);
+//     http.begin(fullURL);
+//     int httpResponseCode = http.POST(jsonString);
+
+
+//     if (httpResponseCode == 200) {
+//       Serial.println("Status OK");
+//       return;
+//     }
+
+//     Serial.print("Status NOT OK. Trying to register device again... - status code ");
+//     Serial.println(httpResponseCode);
+//     isConnected = false;
+
+//     http.end();
+//   } else {
+//     Serial.println("Not connected to WiFi");
+
+//     WiFi.disconnect();
+//     WiFi.begin(ssid, password);
+    
+//     while (WiFi.status() != WL_CONNECTED) {
+//       delay(1000);
+//       Serial.println("Connecting to WiFi after losing connection...");
+//     }
+//   }
+// }
+
 WebServer server(80);
 
 bool isScanning = false;
 bool isLEDOn = false;
+int64_t previuosScan = 0;
 void setup() {
   pinMode(LED, OUTPUT);
   Serial.begin(115200);
@@ -315,7 +324,7 @@ void setup() {
   server.on("/", HTTP_GET, []() {
     server.send(200);
   });
-  server.on("/scan", HTTP_GET, [&distance, &avgRSSI, &isScanning, &txPower]() {
+  server.on("/scan", HTTP_GET, [&]() {
     //return defualt values when calibration is in progress (LED is blinking)
     if (isLEDOn) {
       JsonDocument jsonDoc;
@@ -333,6 +342,7 @@ void setup() {
       return;
     }
 
+    previuosScan = esp_timer_get_time();
     // Create a JSON object
     JsonDocument jsonDoc;
     // Add data to the JSON object
@@ -350,7 +360,7 @@ void setup() {
     isScanning = false;
   });
 
-  server.on("/beginCalibration", HTTP_GET, [&avgRSSI, &txPower]() {
+  server.on("/beginCalibration", HTTP_GET, [&]() {
     if (!isLEDOn) {
       Serial.println("Cannot begin calibration without first getting response 200 from main server /calibrationStatus");
       server.send(405);
@@ -401,11 +411,11 @@ void setup() {
     digitalWrite(LED, LOW);
   });
 
-  server.on("/blinkOn", HTTP_GET, [&isLEDOn]() {
+  server.on("/blinkOn", HTTP_GET, [&]() {
     isLEDOn = true;
     server.send(200);
   });
-  server.on("/blinkOff", HTTP_GET, [&isLEDOn]() {
+  server.on("/blinkOff", HTTP_GET, [&]() {
     isLEDOn = false;
     digitalWrite(LED, LOW);
     server.send(200);
@@ -418,7 +428,7 @@ void setup() {
   Serial.println("Handeling /scan requests (.):");
 }
 
-int64_t previuosTime = 0;
+
 int64_t blinkerTimer = 0;
 void loop() {
   server.handleClient();
@@ -430,12 +440,11 @@ void loop() {
     return;
   }
 
-  //if a minute has passed check if the main server is still active
-  if (!isScanning && esp_timer_get_time() - previuosTime >= 60000000) {
-    previuosTime = esp_timer_get_time();
-    CheckServerStatus();
+    //if a minute has passed check if the main server is still active
+  if (!isScanning && esp_timer_get_time() - previuosScan >= 60000000 && isConnected) {
+    previuosScan = esp_timer_get_time();
+    isConnected=false;
   }
-
 
   //start the onboard LED
   if (isLEDOn) {
