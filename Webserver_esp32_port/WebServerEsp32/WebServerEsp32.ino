@@ -148,6 +148,7 @@ void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState)
 
       if (!error) {
         if (doc.containsKey("id") && doc.containsKey("avgrssi") && doc.containsKey("distance") && doc.containsKey("rssi1m") && doc.size() == 4) {
+          registeredDevices[Id]["isConnected"] = true;
           registeredDevices[Id]["distance"] = doc["distance"];
           registeredDevices[Id]["avgRSSI"] = doc["avgrssi"];
           registeredDevices[Id]["RSSI1m"] = doc["rssi1m"];
@@ -415,10 +416,17 @@ void setup() {
 
   WiFi.begin(config["ssid"]. as<const char*>(), config["password"]. as<const char*>());
   WiFi.config(staticIP, gateway, subnet, dns);
+
+  int failCounter=0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     if (debug)
       Serial.println("Connecting to WiFi...");
+
+    failCounter++;
+    if (failCounter>=20) {
+    ESP.restart();
+    }
   }
 
   if (debug)
@@ -521,6 +529,7 @@ void setup() {
       obj["avgRSSI"] =registeredDevices[kv.key()]["avgRSSI"].as<int>();
       obj["rssi1m"] = registeredDevices[kv.key()]["RSSI1m"].as<int>();
       obj["isConnected"] = registeredDevices[kv.key()]["isConnected"].as<bool>();   
+      obj["localIp"]=registeredDevices[kv.key()]["ip"].as<const char*>();
     }
 
     String jsonString;
@@ -802,15 +811,25 @@ void setup() {
   });
 
   readJSONFromFile("/savedDevices.json",registeredDevices);
-  abortAllSentRequests();
-  sendGetScanRequests();
+  if(registeredDevices.size()>0){
+    abortAllSentRequests();
+    sendGetScanRequests();
+    bool executingRequests=true;
+    while (executingRequests) {
+      executingRequests=false;
 
-  delay(2000);
+      for (JsonPair kv : registeredDevices.as<JsonObject>()) {
+        if (registeredDevices[kv.key()]["isExecutingRequest"].as<bool>()) {
+          executingRequests=true;
+          break;
+        }
+      }
+      delay(100);
+    }
+  }
   server.begin();
   if (debug)
     Serial.println("HTTP server started");
-
-
 }
 
 
