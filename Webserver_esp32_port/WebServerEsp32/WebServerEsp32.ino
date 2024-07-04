@@ -16,7 +16,7 @@ IPAddress dns(8, 8, 8, 8);
 
 AsyncWebServer server(80);
 
-const bool debug = true;
+const bool debug = false;
 
 // Device struct config
 const int idLength = 50;
@@ -327,7 +327,7 @@ void setup() {
     return;
   }
 
-  readJSONFromFile("/savedDevices.json",registeredDevices)
+  readJSONFromFile("/savedDevices.json",registeredDevices);
 
   //loading config from memory
   File configFile = LittleFS.open("/config.json", "r");
@@ -873,13 +873,18 @@ void loop() {
       previuosTime = currentMillis;
 
       size_t currentFreeHeap = ESP.getFreeHeap();
+      if(debug)
       Serial.print("Free heap: ");
+      if(debug)
       Serial.println(currentFreeHeap);
-
+      
       xSemaphoreTake(xMutex, portMAX_DELAY);
 
+      if(debug)
       Serial.println("---Starting new scan---");
+      if(debug)
       Serial.println(registeredDevices.size());
+      if(debug)
       serializeJsonPretty(registeredDevices, Serial);
       
       int requestCounter = 0;
@@ -902,6 +907,7 @@ void loop() {
             continue;
           }
 
+          if(debug)
           Serial.printf("Starting request number %d:\n", requestCounter);
           requests[requestCounter].send();
           registeredDevices[kv.key()]["isExecutingRequest"] = true;
