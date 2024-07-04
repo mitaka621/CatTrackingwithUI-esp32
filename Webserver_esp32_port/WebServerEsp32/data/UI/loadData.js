@@ -4,14 +4,14 @@ const deviceContainer = document.querySelector(".container2");
 deviceContainer.innerHTML = "";
 displayDevices();
 LoadMapFromServer();
-setInterval(displayDevices, 2000);
 
-
-function displayDevices() {
+async function displayDevices() {
 
   const placedDevices = Array.from(document.querySelectorAll(".recieverID")).map(paragraph => paragraph.textContent);
 
-  fetch(serverIp + "/distances")
+  await fetch(serverIp + "/distances", {
+    signal: AbortSignal.timeout(2000)
+  })
     .then(response => {
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);
@@ -33,18 +33,32 @@ function displayDevices() {
       data.forEach(device => {
         const currentDiv = document.querySelector(`div[id="${device.id}"]`);
         if (currentDiv) {
-          if (currentDiv.querySelector(".offline")) {
+          if (device.isConnected) {
             currentDiv.classList.remove("offline");
-            currentDiv.querySelector(".offline").textContent = "Connected";
-            currentDiv.querySelector(".offline").classList = "online";
-          }
+            if (currentDiv.querySelector(".offline")) {
+              currentDiv.querySelector(".offline").textContent = "Connected";
+              currentDiv.querySelector(".offline").classList = "online";
+            }
 
-          currentDiv.querySelector(".distance").innerHTML = `<span>Distance:</span>${device.distance == "-1" ? "--" : device.distance}m`;
-          currentDiv.querySelector(".rssi").innerHTML = `<span>RSSI:</span>${device.avgRSSI == "-1" ? "--" : device.avgRSSI}db`;
-          currentDiv.querySelector(".signalstr").innerHTML = `RSSI at 1m: ${device.rssi1m}db`;
+            currentDiv.querySelector(".distance").innerHTML = `<span>Distance:</span>${device.distance == "-1" ? "--" : device.distance}m`;
+            currentDiv.querySelector(".rssi").innerHTML = `<span>RSSI:</span>${device.avgRSSI == "-1" ? "--" : device.avgRSSI}db`;
+            currentDiv.querySelector(".signalstr").innerHTML = `RSSI at 1m: ${device.rssi1m}db`;
+
+          }
+          else {
+            currentDiv.classList += " offline";
+            currentDiv.querySelector(".distance").innerHTML = `<span>Distance:</span>--`;
+            currentDiv.querySelector(".rssi").innerHTML = `<span>RSSI:</span>--`;
+            currentDiv.querySelector(".signalstr").innerHTML = `RSSI at 1m: --`;
+            if (currentDiv.querySelector(".online")) {
+              currentDiv.querySelector(".online").textContent = "Disconnected";
+              currentDiv.querySelector(".online").classList = "offline";
+            }
+          }
         }
-        else
-          deviceContainer.innerHTML += `<div class="devicecontainer" id="${device.id}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
+        else {
+          if (device.isConnected) {
+            deviceContainer.innerHTML += `<div class="devicecontainer" id="${device.id}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
                                     <h2>${device.id}</h2>
                                     <p class="online">Connected</p>
                                     <div class="distanceAndRSSI">
@@ -52,9 +66,24 @@ function displayDevices() {
                                       <p class="rssi"><span>RSSI:</span>${device.avgRSSI == "-1" ? "--" : device.avgRSSI}db</p>
                                     </div>           
                                     <p class="signalstr">RSSI at 1m: ${device.rssi1m}db</p>
-                                    <a class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>
+                                    <a id="${device.localIp}" class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>
                                     <p class="type">Type: ${device.type}</p>
                                   </div>`
+          }
+          else {
+            deviceContainer.innerHTML += `<div class="devicecontainer offline" id="${x}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
+                                            <h2>${x}</h2>
+                                            <p class="offline">Disconnected</p>
+                                            <div class="distanceAndRSSI">
+                                              <p class="distance"><span>Distance:</span> --</p>
+                                              <p class="rssi"><span>RSSI:</span>--</p>
+                                            </div>           
+                                            <p class="signalstr">RSSI at 1m: --</p>
+                                            <a id="${device.localIp}" class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>                                
+                                            <p class="type">Type: ESP32</p>
+                                          </div>`
+          }
+        }
       });
 
 
@@ -81,7 +110,6 @@ function displayDevices() {
                                       <a class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>                                
                                       <p class="type">Type: ESP32</p>
                                     </div>`
-
       });
 
       const currentDevices = document.querySelectorAll(".devicecontainer");
@@ -89,8 +117,6 @@ function displayDevices() {
         if (!placedDevices.includes(element.querySelector("h2").textContent) && !extractedIds.includes(element.querySelector("h2").textContent))
           element.remove();
       });
-
-
 
       let points = [];
       let count = 0;
@@ -157,24 +183,23 @@ function displayDevices() {
       }
 
       drawTriangle(points);
-    });
+    }).catch(e => console.log(e));
+
+  await setTimeout(function () {
+    displayDevices();
+  }, 1000);
 }
 
 function InitiateCalibration(e) {
   const deviceId = e.parentElement.id;
-  fetch(serverIp + "/calibrationStatus", {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ "Id": deviceId }),
-  })
+  const ip = e.id;
+  fetch(`http://${ip}/blinkOn`)
     .then(response => {
       if (response.status === 200) {
 
         e.outerHTML = `<div class="accept-cancel-container">
-                      <a class="accept-btn" onclick="StartCalibration(this)">Start</a>
-                      <a class="cancel-btn" onclick="CancelCalibration(this)">Cancel</a>
+                      <a id=${ip} class="accept-btn" onclick="StartCalibration(this)">Start</a>
+                      <a id=${ip} class="cancel-btn" onclick="CancelCalibration(this)">Cancel</a>
                     </div>`;
 
 
@@ -195,18 +220,15 @@ function InitiateCalibration(e) {
     });
 }
 function StartCalibration(e) {
-  const deviceId = e.parentElement.parentElement.id;
+  const ip = e.id;
 
-  fetch(serverIp + "/startCalibration", {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ "Id": deviceId }),
-  })
+  e.parentElement.querySelector(".cancel-btn").remove();
+  e.parentElement.querySelector(".accept-btn").textContent = "Calibrating ........";
+  e.parentElement.querySelector(".accept-btn").setAttribute("onclick", "");
+  fetch(`http://${ip}/beginCalibration`)
     .then(response => {
       if (response.status === 200) {
-        e.parentElement.outerHTML = `<a class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>`;
+        e.parentElement.outerHTML = `<a id="${ip}" class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>`;
       }
     })
     .catch(error => {
@@ -214,18 +236,16 @@ function StartCalibration(e) {
     });
 }
 function CancelCalibration(e) {
-  const deviceId = e.parentElement.parentElement.id;
+  const ip = e.id;
 
-  fetch(serverIp + "/stopCalibration", {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ "Id": deviceId }),
-  })
+  e.parentElement.querySelector(".accept-btn").remove();
+  e.parentElement.querySelector(".cancel-btn").textContent = "Canceling ........";
+  e.parentElement.querySelector(".cancel-btn").setAttribute("onclick", "");
+
+  fetch(`http://${ip}/blinkOff`)
     .then(response => {
       if (response.status === 200) {
-        e.parentElement.outerHTML = `<a class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>`;
+        e.parentElement.outerHTML = `<a id="${ip}" class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>`;
       }
     })
     .catch(error => {
