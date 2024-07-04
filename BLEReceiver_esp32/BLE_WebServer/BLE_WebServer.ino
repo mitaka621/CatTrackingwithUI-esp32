@@ -13,7 +13,7 @@
 #define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
-const char *DeviceId = "psu";
+const char *DeviceId = "on top of pc";
 const char *DeviceType = "ESP32";
 
 
@@ -361,6 +361,7 @@ void setup() {
   });
 
   server.on("/beginCalibration", HTTP_GET, [&]() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
     if (!isLEDOn) {
       Serial.println("Cannot begin calibration without first getting response 200 from main server /calibrationStatus");
       server.send(405);
@@ -378,7 +379,7 @@ void setup() {
     int64_t startTime = esp_timer_get_time();
     Serial.println("Collecting data from ble beacon...");
     while (pBLEScan->isScanning() == true) {
-      if (esp_timer_get_time() - startTime >= 5000000) {
+      if (esp_timer_get_time() - startTime >= 5000000&&arrCount==0) {
         Serial.println("Failed to get RSSI from beacon. Out of range!");
         server.send(404);
         digitalWrite(LED, LOW);
@@ -413,9 +414,11 @@ void setup() {
 
   server.on("/blinkOn", HTTP_GET, [&]() {
     isLEDOn = true;
+    server.sendHeader("Access-Control-Allow-Origin", "*");
     server.send(200);
   });
   server.on("/blinkOff", HTTP_GET, [&]() {
+    server.sendHeader("Access-Control-Allow-Origin", "*");
     isLEDOn = false;
     digitalWrite(LED, LOW);
     server.send(200);
