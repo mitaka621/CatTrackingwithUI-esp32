@@ -27,7 +27,7 @@ async function displayDevices() {
         deviceContainer.querySelector(`h2.nodevices`).remove();
       }
 
-      data.sort((a, b) => a.distance - b.distance);
+      data.sort((a, b) => b.avgRSSI - a.avgRSSI);
       const extractedIds = data.map((device) => device.id);
 
       data.forEach(device => {
@@ -108,6 +108,14 @@ async function displayDevices() {
               } else {
                 document.getElementById("location-name").textContent = "Near " + el.id;
               }
+
+              if (el.distance <= 2) {
+                clearAllDistance();
+                clearCanvas();
+                DrawDistances(el.id, Number(el.distance));
+
+                return;
+              }
             }
             count++;
 
@@ -140,7 +148,6 @@ async function displayDevices() {
             .find((element) => element.textContent === el.id)) {
             clearAllDistance();
             clearCanvas();
-            console.log(el.id);
             DrawDistances(el.id, Number(el.distance));
             isFound = true;
             break;
