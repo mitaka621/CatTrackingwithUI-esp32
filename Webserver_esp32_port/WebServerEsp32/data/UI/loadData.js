@@ -71,8 +71,8 @@ async function displayDevices() {
                                   </div>`
           }
           else {
-            deviceContainer.innerHTML += `<div class="devicecontainer offline" id="${x}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
-                                            <h2>${x}</h2>
+            deviceContainer.innerHTML += `<div class="devicecontainer offline" id="${device.id}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
+                                            <h2>${device.id}</h2>
                                             <p class="offline">Disconnected</p>
                                             <div class="distanceAndRSSI">
                                               <p class="distance"><span>Distance:</span> --</p>
@@ -84,32 +84,6 @@ async function displayDevices() {
                                           </div>`
           }
         }
-      });
-
-
-      placedDevices.forEach((x) => {
-        const currentDiv = document.querySelector(`div[id="${x}"]`);
-        if (!extractedIds.includes(x))
-          if (currentDiv && !currentDiv.querySelector("p.offline")) {
-            currentDiv.classList += " offline";
-            currentDiv.querySelector(".distance").innerHTML = `<span>Distance:</span>--`;
-            currentDiv.querySelector(".rssi").innerHTML = `<span>RSSI:</span>--`;
-            currentDiv.querySelector(".signalstr").innerHTML = `RSSI at 1m: --`;
-            currentDiv.querySelector(".online").textContent = "Disconnected";
-            currentDiv.querySelector(".online").classList = "offline";
-          }
-        if (!currentDiv && currentDiv.querySelector("p.offline"))
-          deviceContainer.innerHTML += `<div class="devicecontainer offline" id="${x}" onmouseenter="AddOutline(this)" onmouseleave="RemoveOutline(this)">
-                                      <h2>${x}</h2>
-                                      <p class="offline">Disconnected</p>
-                                      <div class="distanceAndRSSI">
-                                        <p class="distance"><span>Distance:</span> --</p>
-                                        <p class="rssi"><span>RSSI:</span>--</p>
-                                      </div>           
-                                      <p class="signalstr">RSSI at 1m: --</p>
-                                      <a class="calibrate-button" onclick="InitiateCalibration(this)">Calibrate</a>                                
-                                      <p class="type">Type: ESP32</p>
-                                    </div>`
       });
 
       const currentDevices = document.querySelectorAll(".devicecontainer");

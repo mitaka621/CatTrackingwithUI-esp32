@@ -10,6 +10,7 @@
 #define FORMAT_LITTLEFS_IF_FAILED true
 
 #define RSSIsampleSize 10  // Adjust as needed
+#define CalibratingRssiSampleSize 30  // Adjust as needed
 #define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
@@ -31,18 +32,19 @@ int avgRSSI = 0;
 double roundedDistance = 0;
 double distance = 0;
 int txPower = -59;  // Example Tx Power value, adjust as needed
-const double N = 2.0;  // Example environment factor, adjust as needed
+const double N = 3.0;  // Example environment factor, adjust as needed
 
 //Kalman filtering
 float x = 0.0;       // Initial state estimate
 float P = 1.0;       // Initial estimate error covariance
-float Q = 0.01;      // Initial process noise covariance
-float R = 0.1;       // Initial measurement noise covariance
+float Q = 1e-2;      // Initial process noise covariance
+float R = 1e-2;       // Initial measurement noise covariance
 float K;             // Kalman gain
 float prevRSSI = 0;   // Previous RSSI measurement
 float variance = 0;   // Variance estimate
 float alpha = 0.001;  // Smoothing factor for variance
 float varianceThreshold = 1.0;  // Threshold to trigger parameter adjustment
+int windowSize= 3;
 
 NimBLEScan* pBLEScan;
 
@@ -61,7 +63,7 @@ void scanTask(void *pvParameters) {
 
     int64_t startTime = esp_timer_get_time();
     while (pBLEScan->isScanning()) {
-      if (esp_timer_get_time() - startTime >= 5000000&&arrCount==0) {
+      if (esp_timer_get_time() - startTime >= 10000000&&arrCount==0) {
         Serial.println("Failed to get RSSI from beacon. Out of range!");
         roundedDistance = -1;
         avgRSSI = -1;
@@ -94,47 +96,69 @@ void handleScanResult(void *pvParameters) {
         arrCount = 0;
 
         qsort(RSSIArr, RSSIsampleSize, sizeof(int), compareAscending);
-        int medianRSSI = RSSIArr[RSSIsampleSize / 2]; 
+        float movingAvgRSSI[RSSIsampleSize];
+        float window[windowSize];
+        int windowCount = 0;
 
-        // Update variance estimate
-        variance = (1 - alpha) * variance + alpha * (medianRSSI - prevRSSI) * (medianRSSI - prevRSSI);
+        for (int i = 0; i < RSSIsampleSize; ++i) {
+            window[windowCount % windowSize] = RSSIArr[i];
+            windowCount++;
 
-        // Adjust Q and R based on variance
-        if (variance > varianceThreshold) {
-            Q = 0.1;   // Increase process noise covariance Q
-            R = 0.5;   // Increase measurement noise covariance R
-        } else {
-            Q = 0.01;  // Default process noise covariance Q
-            R = 0.1;   // Default measurement noise covariance R
+            int size = std::min(windowCount, windowSize);
+            float sum = 0;
+            for (int j = 0; j < size; ++j) {
+                sum += window[j];
+            }
+            movingAvgRSSI[i] = sum / size;
         }
 
-        // Update previous RSSI
-        prevRSSI = medianRSSI;
+        // Apply Kalman Filter
+        float kalmanFilteredRSSI[RSSIsampleSize];
+        float x_est = movingAvgRSSI[0];
+        float P = 1.0;
+
+        for (int k = 0; k < RSSIsampleSize; ++k) {
+            // Prediction
+            float x_pred = x_est;
+            float P_pred = P + Q;
+
+            // Update
+            float K = P_pred / (P_pred + R);
+            x_est = x_pred + K * (movingAvgRSSI[k] - x_pred);
+            P = (1 - K) * P_pred;
+
+            kalmanFilteredRSSI[k] = x_est;
+        }
+
+        // Get the median of the filtered RSSI values
+        qsort(kalmanFilteredRSSI, RSSIsampleSize, sizeof(float), compareAscending);
+        float medianRSSI = kalmanFilteredRSSI[RSSIsampleSize / 2];
         avgRSSI=medianRSSI;
-
-        // Kalman filter prediction and update
-        float predictedRSSI = x;  // Previous state estimate
-        float errorCovariance = P + Q;  // Error covariance
-        K = errorCovariance / (errorCovariance + R);  // Kalman gain
-        x = predictedRSSI + K * ((float)medianRSSI - predictedRSSI);  // Updated state estimate
-        P = (1 - K) * errorCovariance;  // Updated estimate error covariance
-
-        // Calculate distance using updated RSSI estimate
-        distance = pow(10, (txPower - x) / (10.0 * N));
+        Serial.println(avgRSSI);
+        // Calculate the distance based on the median RSSI value
+        distance = pow(10, (txPower - medianRSSI) / (10.0 * N));
         roundedDistance = round(distance * 2.0) / 2.0;
 
-        Serial.println(distance);
+        Serial.println(roundedDistance);
       }
     }
   }
 }
 
+bool isCalibrating=false;
+int calibrationRssiArr[CalibratingRssiSampleSize];
+int calibrationCounter=0;
 //runs on core 1
 class MyAdvertisedDeviceCallbacks : public NimBLEAdvertisedDeviceCallbacks {
   void onResult(NimBLEAdvertisedDevice* advertisedDevice) override {
     if (strcmp(beaconMAC, advertisedDevice->getAddress().toString().c_str()) == 0) {
       int rssi = advertisedDevice->getRSSI();
       if (rssi != 0) {
+        if (isCalibrating) {
+          calibrationRssiArr[calibrationCounter++]=rssi;
+          Serial.printf("Calibration progress %d/%d\n", calibrationCounter,CalibratingRssiSampleSize);
+          return;
+        }
         ScanResult result;
         result.rssi = rssi;
         result.address = advertisedDevice->getAddress();
@@ -371,23 +395,39 @@ void setup() {
     digitalWrite(LED, HIGH);
 
     isScanning = true;
+    isCalibrating=true;
     Serial.println();
     Serial.println("Proccesing new GET /beginCalibration");
-
+    
+    
+    
     pBLEScan->start(0, nullptr, false);
 
     int64_t startTime = esp_timer_get_time();
     Serial.println("Collecting data from ble beacon...");
-    while (pBLEScan->isScanning() == true) {
-      if (esp_timer_get_time() - startTime >= 5000000&&arrCount==0) {
+    while (calibrationCounter<CalibratingRssiSampleSize) {
+      if (esp_timer_get_time() - startTime >= 20000000&&calibrationCounter==0) {
         Serial.println("Failed to get RSSI from beacon. Out of range!");
+        pBLEScan->stop();
+        calibrationCounter=0;
+        isCalibrating=false;
+        isScanning = false;
         server.send(404);
         digitalWrite(LED, LOW);
         return;
       }
     }
+    
+    pBLEScan->stop();
+    calibrationCounter=0;
+    isCalibrating=false;
+    isScanning = false;
 
-    txPower = avgRSSI;
+    qsort(calibrationRssiArr, CalibratingRssiSampleSize, sizeof(int), compareAscending);
+
+    Serial.print("Calibration result: ");
+    Serial.println(calibrationRssiArr[CalibratingRssiSampleSize/2]);
+    txPower=calibrationRssiArr[CalibratingRssiSampleSize/2];
 
     JsonDocument newtxPower;
     newtxPower["txpower"] = txPower;
