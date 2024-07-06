@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
-
+#include <esp_now.h>
 
 IPAddress staticIP(192, 168, 0, 9);  // Set the desired static IP address
 IPAddress gateway(192, 168, 0, 1);
@@ -381,6 +381,25 @@ void serveStaticFile(AsyncWebServerRequest *request, const String& path, const S
 
 bool CalibrationBegin = false;
 
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  // Create a buffer to hold the incoming JSON data
+  char jsonData[len + 1];
+  memcpy(jsonData, incomingData, len);
+  jsonData[len] = '\0';
+
+  // Deserialize the JSON document
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, jsonData);
+
+  if (error) {
+    Serial.print("deserializeJson() failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  Serial.println("recived json via ESP now:");
+  serializeJsonPretty(doc, Serial);
+}
 
 void setup() {
   Serial.begin(115200);
@@ -413,7 +432,8 @@ void setup() {
     Serial.println(contents);
 
   configFile.close();
-
+  
+  WiFi.mode(WIFI_STA);
   WiFi.begin(config["ssid"]. as<const char*>(), config["password"]. as<const char*>());
   WiFi.config(staticIP, gateway, subnet, dns);
 
@@ -428,6 +448,7 @@ void setup() {
     ESP.restart();
     }
   }
+  
 
   if (debug)
     Serial.println("Connected to WiFi");
@@ -435,6 +456,16 @@ void setup() {
     Serial.print("IP address: ");
   if (debug)
     Serial.println(WiFi.localIP());
+
+  Serial.print("MAC Address: ");
+  Serial.println(WiFi.macAddress());
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+
+  esp_now_register_recv_cb(OnDataRecv);
 
   //endpoints configuration
   server.serveStatic("/", LittleFS, "/UI/").setDefaultFile("index.html");

@@ -5,7 +5,7 @@
 #include <ArduinoJson.h>
 #include "FS.h"
 #include <LittleFS.h>
-
+#include <esp_now.h>
 
 #define FORMAT_LITTLEFS_IF_FAILED true
 
@@ -22,13 +22,14 @@ const char *ssid = "ditoge03";
 const char *password = "mitko111";
 
 const char *ServerAddress = "http://192.168.0.9/";
+uint8_t broadcastAddress[] = {0xA0, 0xA3, 0xB3, 0x2F, 0x91, 0x24};
 
 //mac address for the BLE beacon
 //const  char* beaconMAC = "e9:65:3c:b5:99:c1"; //big boy beacon
 const char* beaconMAC = "d0:3e:ed:1e:9a:9b";  //small beacon 5.0
 int RSSIArr[RSSIsampleSize];
-int arrCount = 0;
-int avgRSSI = 0;
+int arrCount = -1;
+int avgRSSI = -1;
 double roundedDistance = 0;
 double distance = 0;
 int txPower = -59;  // Example Tx Power value, adjust as needed
@@ -332,7 +333,7 @@ void setup() {
     NULL,               /* Task handle to keep track of created task */
     0);                 /* Core where the task should run */
 
-
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -344,6 +345,22 @@ void setup() {
 
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+
+  esp_now_peer_info_t peerInfo;
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+
+  // Add peer
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
+  }
 
   server.on("/", HTTP_GET, []() {
     server.send(200);
@@ -471,22 +488,61 @@ void setup() {
   Serial.println("Handeling /scan requests (.):");
 }
 
+int espNowErrorCounter=0;
 
-int64_t blinkerTimer = 0;
-void loop() {
-  server.handleClient();
-  if (!isConnected) {
-    isLEDOn = false;
-    digitalWrite(LED, LOW);
+void SendDataESPNow(){
+  JsonDocument jsonDoc;
 
-    ConnectToMainServer();
-    return;
+  jsonDoc["distance"] = roundedDistance;
+  jsonDoc["avgrssi"] = avgRSSI;
+  jsonDoc["id"] = DeviceId;
+  jsonDoc["rssi1m"] = txPower;
+
+  size_t jsonSize = measureJson(jsonDoc) + 1;
+
+  char* jsonData = new char[jsonSize];
+
+  serializeJson(jsonDoc, jsonData, jsonSize);
+
+  // Send JSON data via ESP-NOW
+  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)jsonData, jsonSize);
+  delay(100);
+  if (result == ESP_OK) {
+    Serial.println("Sent with success");
+  } else {
+    Serial.println("Error sending the data");
+    espNowErrorCounter++;
+    Serial.println(esp_err_to_name(result));
   }
 
-    //if a minute has passed check if the main server is still active
-  if (!isScanning && esp_timer_get_time() - previuosScan >= 60000000 && isConnected) {
-    previuosScan = esp_timer_get_time();
-    isConnected=false;
+  delete[] jsonData;
+}
+
+int64_t blinkerTimer = 0;
+int64_t previousSend = 0;
+void loop() {
+  server.handleClient();
+  // if (!isConnected) {
+  //   isLEDOn = false;
+  //   digitalWrite(LED, LOW);
+
+  //   ConnectToMainServer();
+  //   return;
+  // }
+
+  //   //if a minute has passed check if the main server is still active
+  // if (!isScanning && esp_timer_get_time() - previuosScan >= 60000000 && isConnected) {
+  //   previuosScan = esp_timer_get_time();
+  //   isConnected=false;
+  // }
+
+  //send new package every 1 sec
+  if (!isLEDOn&& esp_timer_get_time() - previousSend >= 2000000) {
+    if (espNowErrorCounter>=5) {
+      ESP.restart();
+    }
+    previousSend = esp_timer_get_time();
+    SendDataESPNow();
   }
 
   //start the onboard LED
