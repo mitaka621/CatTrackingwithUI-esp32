@@ -305,7 +305,20 @@ void setup() {
       Serial.println(txPower);
     }
     configFile.close();
-  }
+  } 
+
+  if (LittleFS.exists("/latestData.json")) {
+    File savedData = LittleFS.open("/latestData.json", "r");
+    JsonDocument data;
+    deserializeJson(data, savedData);
+    if (data.containsKey("distance")) {
+      distance=data["distance"].as<int>();    
+    }
+    if (data.containsKey("avgrssi")) {
+      avgRSSI=data["avgrssi"].as<int>();    
+    }    
+    savedData.close();
+  } 
 
   NimBLEDevice::init("ESP32_BLE");
   pBLEScan = NimBLEDevice::getScan();
@@ -355,6 +368,7 @@ void setup() {
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
   peerInfo.channel = 0;
   peerInfo.encrypt = false;
+  peerInfo.ifidx = WIFI_IF_STA;
 
   // Add peer
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
@@ -488,9 +502,7 @@ void setup() {
   Serial.println("Handeling /scan requests (.):");
 }
 
-int espNowErrorCounter=0;
-
-void SendDataESPNow(){
+void SendDataESPNow() {
   JsonDocument jsonDoc;
 
   jsonDoc["distance"] = roundedDistance;
@@ -506,13 +518,18 @@ void SendDataESPNow(){
 
   // Send JSON data via ESP-NOW
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)jsonData, jsonSize);
-  delay(100);
   if (result == ESP_OK) {
     Serial.println("Sent with success");
   } else {
-    Serial.println("Error sending the data");
-    espNowErrorCounter++;
+    Serial.println("Error sending the data. Saving data and restarting.....");
     Serial.println(esp_err_to_name(result));
+
+    if(!isLEDOn){
+    File file = LittleFS.open("/latestData.json", "w");
+    serializeJson(jsonDoc, file);
+    file.close();
+    ESP.restart();
+    } 
   }
 
   delete[] jsonData;
@@ -537,10 +554,7 @@ void loop() {
   // }
 
   //send new package every 1 sec
-  if (!isLEDOn&& esp_timer_get_time() - previousSend >= 2000000) {
-    if (espNowErrorCounter>=5) {
-      ESP.restart();
-    }
+  if (!isLEDOn&& esp_timer_get_time() - previousSend >= 1000000) {
     previousSend = esp_timer_get_time();
     SendDataESPNow();
   }
