@@ -14,7 +14,7 @@
 #define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
-const char *DeviceId = "on top of pc";
+const char *DeviceId = "psu";
 const char *DeviceType = "ESP32";
 
 
@@ -30,7 +30,7 @@ const char* beaconMAC = "d0:3e:ed:1e:9a:9b";  //small beacon 5.0
 int RSSIArr[RSSIsampleSize];
 int arrCount = -1;
 int avgRSSI = -1;
-double roundedDistance = 0;
+double roundedDistance = -1;
 double distance = 0;
 int txPower = -59;  // Example Tx Power value, adjust as needed
 const double N = 3.0;  // Example environment factor, adjust as needed
@@ -509,6 +509,9 @@ void SendDataESPNow() {
   jsonDoc["avgrssi"] = avgRSSI;
   jsonDoc["id"] = DeviceId;
   jsonDoc["rssi1m"] = txPower;
+  jsonDoc["isConnected"]=true;
+  jsonDoc["ip"]=WiFi.localIP().toString();
+  jsonDoc["type"]="ESP32";
 
   size_t jsonSize = measureJson(jsonDoc) + 1;
 
@@ -519,7 +522,7 @@ void SendDataESPNow() {
   // Send JSON data via ESP-NOW
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *)jsonData, jsonSize);
   if (result == ESP_OK) {
-    Serial.println("Sent with success");
+    Serial.print(".");
   } else {
     Serial.println("Error sending the data. Saving data and restarting.....");
     Serial.println(esp_err_to_name(result));
