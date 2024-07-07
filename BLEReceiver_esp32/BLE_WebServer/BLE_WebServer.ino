@@ -1,6 +1,5 @@
 #include <NimBLEDevice.h>
 #include <WiFi.h>
-#include <HTTPClient.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include "FS.h"
@@ -14,7 +13,7 @@
 #define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
-const char *DeviceId = "psu";
+const char *DeviceId = "couch";
 const char *DeviceType = "ESP32";
 
 
@@ -169,106 +168,6 @@ class MyAdvertisedDeviceCallbacks : public NimBLEAdvertisedDeviceCallbacks {
   }
 };
 
-bool isConnected = false;
-void ConnectToMainServer() {
-  if (WiFi.status() == WL_CONNECTED) {
-
-    HTTPClient http;
-
-    // Create a JSON object
-    JsonDocument jsonDoc;  // Adjust the size according to your JSON structure
-
-    // Populate the JSON object with key-value pairs
-    jsonDoc["DeviceId"] = DeviceId;
-    jsonDoc["CurrentIP"] = WiFi.localIP().toString();
-    jsonDoc["Type"] = DeviceType;
-
-    // Serialize the JSON object to a string
-    String jsonString;
-    serializeJson(jsonDoc, jsonString);
-
-    char fullURL[50];
-    strcpy(fullURL, ServerAddress);
-    strcat(fullURL, "device");
-
-    Serial.printf("Sending a POST request to %s\n", fullURL);
-    http.begin(fullURL);
-    http.addHeader("Content-Type", "application/json");
-    int httpResponseCode = http.POST(jsonString);
-
-
-    if (httpResponseCode == 200) {
-      Serial.println("Device registered successfully!");
-      isConnected = true;
-      return;
-    }
-    if (httpResponseCode == 409) {
-      Serial.println("Device already added!");
-      isConnected = true;
-      return;
-    }
-    Serial.print("Failed to conect to server - status code ");
-    Serial.println(httpResponseCode);
-
-    http.end();
-  } else {
-    Serial.println("Not connected to WiFi");
-
-    WiFi.disconnect();
-    WiFi.begin(ssid, password);
-    
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(1000);
-      Serial.println("Connecting to WiFi after losing connection...");
-    }
-  }
-}
-
-// void CheckServerStatus() {
-//   if (WiFi.status() == WL_CONNECTED) {
-//     HTTPClient http;
-
-//     JsonDocument jsonDoc;
-
-//     jsonDoc["Id"] = DeviceId;
-
-//     char jsonString[200];
-//     serializeJson(jsonDoc, jsonString);
-
-//     char fullURL[300];
-//     strcpy(fullURL, ServerAddress);
-//     strcat(fullURL, "status");
-
-
-//     String str(fullURL);
-//     Serial.printf("Sending a POST request to %s\n", fullURL);
-//     http.begin(fullURL);
-//     int httpResponseCode = http.POST(jsonString);
-
-
-//     if (httpResponseCode == 200) {
-//       Serial.println("Status OK");
-//       return;
-//     }
-
-//     Serial.print("Status NOT OK. Trying to register device again... - status code ");
-//     Serial.println(httpResponseCode);
-//     isConnected = false;
-
-//     http.end();
-//   } else {
-//     Serial.println("Not connected to WiFi");
-
-//     WiFi.disconnect();
-//     WiFi.begin(ssid, password);
-    
-//     while (WiFi.status() != WL_CONNECTED) {
-//       delay(1000);
-//       Serial.println("Connecting to WiFi after losing connection...");
-//     }
-//   }
-// }
-
 WebServer server(80);
 
 bool isScanning = false;
@@ -379,41 +278,6 @@ void setup() {
   server.on("/", HTTP_GET, []() {
     server.send(200);
   });
-  server.on("/scan", HTTP_GET, [&]() {
-    //return defualt values when calibration is in progress (LED is blinking)
-    if (isLEDOn) {
-      JsonDocument jsonDoc;
-      // Add data to the JSON object
-      jsonDoc["distance"] = -1;
-      jsonDoc["avgrssi"] = -1;
-      jsonDoc["id"] = DeviceId;
-      jsonDoc["rssi1m"] = txPower;
-      // Serialize JSON to a string
-      char jsonString[200];
-      serializeJson(jsonDoc, jsonString);
-
-      // Send JSON response
-      server.send(200, "application/json", jsonString);
-      return;
-    }
-
-    previuosScan = esp_timer_get_time();
-    // Create a JSON object
-    JsonDocument jsonDoc;
-    // Add data to the JSON object
-    jsonDoc["distance"] = roundedDistance;
-    jsonDoc["avgrssi"] = avgRSSI;
-    jsonDoc["id"] = DeviceId;
-    jsonDoc["rssi1m"] = txPower;
-    // Serialize JSON to a string
-    char jsonString[600];
-    serializeJson(jsonDoc, jsonString);
-
-    Serial.print(".");
-    server.send(200, "application/json", jsonString);
-
-    isScanning = false;
-  });
 
   server.on("/beginCalibration", HTTP_GET, [&]() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -499,7 +363,7 @@ void setup() {
   Serial.print("Server started - ");
   Serial.println(WiFi.localIP());
 
-  Serial.println("Handeling /scan requests (.):");
+  Serial.println("Sent data packet successfully (.):");
 }
 
 void SendDataESPNow() {
@@ -542,19 +406,6 @@ int64_t blinkerTimer = 0;
 int64_t previousSend = 0;
 void loop() {
   server.handleClient();
-  // if (!isConnected) {
-  //   isLEDOn = false;
-  //   digitalWrite(LED, LOW);
-
-  //   ConnectToMainServer();
-  //   return;
-  // }
-
-  //   //if a minute has passed check if the main server is still active
-  // if (!isScanning && esp_timer_get_time() - previuosScan >= 60000000 && isConnected) {
-  //   previuosScan = esp_timer_get_time();
-  //   isConnected=false;
-  // }
 
   //send new package every 1 sec
   if (!isLEDOn&& esp_timer_get_time() - previousSend >= 1000000) {
