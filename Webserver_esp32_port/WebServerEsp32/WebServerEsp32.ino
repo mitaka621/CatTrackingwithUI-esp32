@@ -16,7 +16,7 @@ IPAddress dns(8, 8, 8, 8);
 
 AsyncWebServer server(80);
 
-const bool debug = true;
+const bool debug = false;
 
 // Device struct config
 const int idLength = 50;
@@ -381,7 +381,7 @@ void serveStaticFile(AsyncWebServerRequest *request, const String& path, const S
 
 bool CalibrationBegin = false;
 
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+void OnDataRecv(const esp_now_recv_info_t * esp_now_info, const uint8_t *incomingData, int len) {
   // Create a buffer to hold the incoming JSON data
   char jsonData[len + 1];
   memcpy(jsonData, incomingData, len);
@@ -396,9 +396,18 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     Serial.println(error.c_str());
     return;
   }
+  String id(doc["id"].as<const char*>());
 
-  Serial.println("recived json via ESP now:");
-  serializeJsonPretty(doc, Serial);
+  registeredDevices[id]=doc;
+  registeredDevices[id]["timeRecieved"]=millis();
+
+  if (debug)
+  Serial.println("Current device collection:");
+  if (debug)
+  serializeJsonPretty(registeredDevices, Serial);
+
+  if (!debug)
+  Serial.print(".");
 }
 
 void setup() {
@@ -557,8 +566,8 @@ void setup() {
       obj["id"] =kv.key().c_str();
       obj["type"] = registeredDevices[kv.key()]["type"].as<const char*>();
       obj["distance"] = registeredDevices[kv.key()]["distance"].as<double>();
-      obj["avgRSSI"] =registeredDevices[kv.key()]["avgRSSI"].as<int>();
-      obj["rssi1m"] = registeredDevices[kv.key()]["RSSI1m"].as<int>();
+      obj["avgRSSI"] =registeredDevices[kv.key()]["avgrssi"].as<int>();
+      obj["rssi1m"] = registeredDevices[kv.key()]["rssi1m"].as<int>();
       obj["isConnected"] = registeredDevices[kv.key()]["isConnected"].as<bool>();   
       obj["localIp"]=registeredDevices[kv.key()]["ip"].as<const char*>();
     }
@@ -841,23 +850,6 @@ void setup() {
     map.close();
   });
 
-  readJSONFromFile("/savedDevices.json",registeredDevices);
-  if(registeredDevices.size()>0){
-    abortAllSentRequests();
-    sendGetScanRequests();
-    bool executingRequests=true;
-    while (executingRequests) {
-      executingRequests=false;
-
-      for (JsonPair kv : registeredDevices.as<JsonObject>()) {
-        if (registeredDevices[kv.key()]["isExecutingRequest"].as<bool>()) {
-          executingRequests=true;
-          break;
-        }
-      }
-      delay(100);
-    }
-  }
   server.begin();
   if (debug)
     Serial.println("HTTP server started");
@@ -925,10 +917,21 @@ unsigned long previuosTime = 0;
 void loop() {
     unsigned long currentMillis = millis();
 
-    // 2-second interval for sending requests
-    if (!CalibrationBegin && currentMillis - previuosTime >= 2000) {
+    //check for devices which havent supplyied data for over 10 sec every 10 sec
+    if (currentMillis - previuosTime >= 10000) {
       previuosTime = currentMillis;
-
-      sendGetScanRequests();
+      for (JsonPair kv : registeredDevices.as<JsonObject>()) {
+        if (registeredDevices[kv.key()]["isConnected"].as<bool>()&&currentMillis-registeredDevices[kv.key()]["timeRecieved"].as<unsigned long>()>10000) {
+          Serial.println("Device timeout");
+          Serial.println(kv.key().c_str());
+          registeredDevices[kv.key()]["isConnected"]=false;
+        }   
+      }
     }
+    // 2-second interval for sending requests
+    // if (!CalibrationBegin && currentMillis - previuosTime >= 2000) {
+    //   previuosTime = currentMillis;
+
+    //   sendGetScanRequests();
+    // }
 }
