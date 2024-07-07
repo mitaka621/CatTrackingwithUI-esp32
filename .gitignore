@@ -1,1 +1,3 @@
 *.json
+Webserver_esp32_port/WebServerEsp32/data/config.json
+*.json

@@ -91,8 +91,16 @@ void OnDataRecv(const esp_now_recv_info_t * esp_now_info, const uint8_t *incomin
     PushNotification("Device Reconnected - "+id,"A device previously lost connection has now returned online.",1);
   }
 
+  if (doc["avgrssi"].as<int>()==-1&& registeredDevices[id]["BLEFound"].as<bool>()) {
+    PushNotification(id+" lost connection to the BLE beacon","A reciever cannot connect to the selected BLE beacon. Connection lost.....",3);
+    registeredDevices[id]["BLEFound"]=false;
+  }
+
   registeredDevices[id]=doc;
   registeredDevices[id]["timeRecieved"]=millis();
+  if (doc["avgrssi"].as<int>()!=-1) {
+    registeredDevices[id]["BLEFound"]=true;
+  } 
 
   if (debug)
   Serial.println("Current device collection:");
