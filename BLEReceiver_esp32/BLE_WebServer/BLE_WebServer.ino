@@ -63,7 +63,7 @@ void scanTask(void *pvParameters) {
 
     int64_t startTime = esp_timer_get_time();
     while (pBLEScan->isScanning()) {
-      if (esp_timer_get_time() - startTime >= 10000000&&arrCount==0) {
+      if (esp_timer_get_time() - startTime >= 30000000) {
         Serial.println("Failed to get RSSI from beacon. Out of range!");
         roundedDistance = -1;
         avgRSSI = -1;
