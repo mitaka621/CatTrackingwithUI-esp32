@@ -1,13 +1,13 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
-#include <FS.h> // For LittleFS support
+#include <FS.h>
 #include <LittleFS.h>
-#include <AsyncHTTPRequest_Generic.h>
-#include <unordered_set>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <esp_now.h>
+#include <time.h>
+#include <stdio.h>
 
 IPAddress staticIP(192, 168, 0, 9);  // Set the desired static IP address
 IPAddress gateway(192, 168, 0, 1);
@@ -16,15 +16,41 @@ IPAddress dns(8, 8, 8, 8);
 
 AsyncWebServer server(80);
 
-const bool debug = false;
+const bool debug = true;
 
-// Device struct config
-const int idLength = 50;
-const int ipLength = 16;
-const int typeLength = 10;
-const int numberDevices = 20;
+const long gmtOffset_sec = 2 * 3600; // Adjust this for standard time (EET, UTC+2)
+const int daylightOffset_sec = 1 * 3600; // Additional offset for DST (UTC+3)
 
-AsyncHTTPRequest requests[numberDevices + 1];
+const char *ntpServer = "time.google.com";
+
+String GetLocalTime() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return "";
+  }
+  char isoDateTime[25];
+  strftime(isoDateTime, sizeof(isoDateTime), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);  
+
+  return String(isoDateTime);
+}
+JsonDocument notificationDoc;
+JsonArray notificationsArray= notificationDoc.to<JsonArray>();
+bool newNotifications=false;
+
+void PushNotification(String title, String description, int notificationLevel) {
+ 
+  JsonDocument currentNotification;
+   
+  currentNotification["title"]=title;
+  currentNotification["description"]=description;
+  currentNotification["notificationLevel"]=notificationLevel;
+  currentNotification["dateTime"]=GetLocalTime();
+
+  notificationsArray.add(currentNotification);
+
+  newNotifications=true;
+}
 
 JsonDocument registeredDevices;   /*registeredDevices structure
                                     {
@@ -41,345 +67,6 @@ JsonDocument registeredDevices;   /*registeredDevices structure
                                       },
                                       .....
                                     }*/
-
-int requestSetupCounter = 0;
-String IdsArray[numberDevices];
-
-SemaphoreHandle_t xMutex;
-
-void sendGetScanRequests(){
-  if (registeredDevices.size() > 0) {
-      size_t currentFreeHeap = ESP.getFreeHeap();
-      if(debug)
-      Serial.print("Free heap: ");
-      if(debug)
-      Serial.println(currentFreeHeap);
-      
-      xSemaphoreTake(xMutex, portMAX_DELAY);
-
-      if(debug)
-      Serial.println("---Starting new scan---");
-      if(debug)
-      Serial.println(registeredDevices.size());
-      if(debug)
-      serializeJsonPretty(registeredDevices, Serial);
-      
-      int requestCounter = 0;
-      for (JsonPair kv : registeredDevices.as<JsonObject>()) {
-        if (!registeredDevices.containsKey(kv.key())) {
-          requestCounter++;
-          continue;
-        }
-        
-        if (registeredDevices[kv.key()]["isExecutingRequest"].as<bool>()) {
-          requestCounter++;
-          continue;
-        }
-
-        // Ensure previous request is properly handled before starting a new one
-        if (requests[requestCounter].readyState() == readyStateDone || requests[requestCounter].readyState() == readyStateUnsent) {
-          requests[requestCounter].abort();
-          if (!requests[requestCounter].open("GET", registeredDevices[kv.key()]["requestScanUrl"].as<const char*>())) {
-            Serial.println("Failed to open request");
-            continue;
-          }
-
-          if(debug)
-          Serial.printf("Starting request number %d:\n", requestCounter);
-          requests[requestCounter].send();
-          registeredDevices[kv.key()]["isExecutingRequest"] = true;
-          requestCounter++;
-        }      
-        delay(500);
-      }
-
-      xSemaphoreGive(xMutex);
-    }
-}
-
-void abortAllSentRequests(){
-  int count=0;
-  for (JsonPair kv : registeredDevices.as<JsonObject>()) {
-    if (!registeredDevices.containsKey(kv.key())) {
-      count++;
-      continue;
-    }
-    
-    if (requests[count].readyState() == readyStateDone || requests[count].readyState() == readyStateUnsent) {
-      requests[count].abort();          
-    }      
-  }
-}
-
-
-void onRequestComplete(void* optParm, AsyncHTTPRequest* request, int readyState) {
-  if (readyState == readyStateDone) {
-    String& Id = *static_cast<String*>(optParm);
-    Serial.println(Id);
-
-    if (request->elapsedTime() > 10000 || request->responseHTTPString() == "TIMEOUT") {
-      Serial.print("Device disconnected- TIME OUT: ");
-      Serial.println(request->elapsedTime());
-      Serial.println(Id);
-
-      xSemaphoreTake(xMutex, portMAX_DELAY);
-      registeredDevices[Id]["isConnected"] = false;
-      registeredDevices[Id]["isExecutingRequest"] = false;
-      xSemaphoreGive(xMutex);
-
-      return;
-    }
-
-    if (request->responseHTTPString() == "NOT_CONNECTED" || request->responseHTTPString() == "UNKNOWN") {
-      if (!WiFi.isConnected()) {
-        Serial.println("Not connected!!!!!!");
-      }
-      
-      xSemaphoreTake(xMutex, portMAX_DELAY);
-      registeredDevices[Id]["isExecutingRequest"] = false;
-      xSemaphoreGive(xMutex);
-    } else {
-      const char* body = request->responseLongText();
-      Serial.println(body);
-
-      xSemaphoreTake(xMutex, portMAX_DELAY);
-      JsonDocument doc;
-      DeserializationError error = deserializeJson(doc, body);
-
-      if (!error) {
-        if (doc.containsKey("id") && doc.containsKey("avgrssi") && doc.containsKey("distance") && doc.containsKey("rssi1m") && doc.size() == 4) {
-          registeredDevices[Id]["isConnected"] = true;
-          registeredDevices[Id]["distance"] = doc["distance"];
-          registeredDevices[Id]["avgRSSI"] = doc["avgrssi"];
-          registeredDevices[Id]["RSSI1m"] = doc["rssi1m"];
-        } else {
-          Serial.println("Invalid body of the request!");
-        }
-      } else {
-        Serial.print("Failed to parse JSON - ");
-        Serial.println(error.c_str());
-      }
-
-      registeredDevices[Id]["isExecutingRequest"] = false;
-      xSemaphoreGive(xMutex);
-    }
-    
-  }
-}
-
-void writeJSONToFile(const char* filename, JsonDocument& jsonDoc) {
-    File file = LittleFS.open(filename, FILE_WRITE);
-    if (!file) {
-        Serial.println("Failed to open file for writing");
-        return;
-    }
-
-    // Serialize JSON to file
-    if (serializeJson(jsonDoc, file) == 0) {
-        Serial.println("Failed to write JSON to file");
-    }
-
-    file.close();
-}
-
-bool readJSONFromFile(const char* filename, JsonDocument& jsonDoc) {
-    File file = LittleFS.open(filename, FILE_READ);
-    if (!file) {
-        Serial.println("Failed to open file for reading");
-        return false;
-    }
-
-    // Deserialize JSON from file
-    DeserializationError error = deserializeJson(jsonDoc, file);
-    if (error) {
-        Serial.print("Failed to read JSON from file: ");
-        Serial.println(error.c_str());
-        file.close();
-        return false;
-    }
-    file.close();
-
-    for (JsonPair kv : jsonDoc.as<JsonObject>()) {
-      String s(kv.key().c_str());
-
-      IdsArray[requestSetupCounter] = s;
-      requests[requestSetupCounter].onReadyStateChange(onRequestComplete, &IdsArray[requestSetupCounter]);
-
-      requestSetupCounter++;
-      jsonDoc[kv.key()]["isExecutingRequest"]=false;
-    }
-
-    return true;
-}
-
-class DeviceManager { 
-public:
-  DeviceManager(){};
-
-  static int Count() {
-    return registeredDevices.size();
-  }
-
-  // Returns 1 if a device is successfully added
-  // Returns 0 if there is a validation error
-  // Returns -1 if a device is already added
-  static int AddNewDevice(const char* Id, const char* Ip, const char* Type) {
-    
-    if (registeredDevices.size() == numberDevices) {
-      if (debug)
-        Serial.println("There is no more room for more devices!");
-      return 0;
-    }
-
-    int newIdLength = 0;
-    while (Id[newIdLength] != '\0') {
-      newIdLength++;
-    }
-
-    int newIpLength = 0;
-    while (Ip[newIpLength] != '\0') {
-      newIpLength++;
-    }
-
-    int newTypeLength = 0;
-    while (Type[newTypeLength] != '\0') {
-      newTypeLength++;
-    }
-
-    if (idLength < newIdLength || ipLength < newIpLength || typeLength < newTypeLength) {
-      if (debug)
-        Serial.println("One of the input args is longer than the declared length!");
-      return 0;
-    }
-
-    String s(Id);
-  
-    int deviceStatusResult = isDeviceRegistered(Id, Ip);  
-    xSemaphoreTake(xMutex, portMAX_DELAY);
-    switch (deviceStatusResult) {
-      case 1:
-        if (debug)
-          Serial.println("Device already added!");
-
-        registeredDevices[s]["isConnected"] = true;
-        registeredDevices[s]["isExecutingRequest"] = false;
-        xSemaphoreGive(xMutex);
-        return -1;
-      default:       
-        String ipStr(Ip);
-        String typeStr(Type);
-
-        registeredDevices[s]["ip"] = ipStr;
-        registeredDevices[s]["type"] = typeStr;
-        registeredDevices[s]["distance"] = -1;
-        registeredDevices[s]["avgRSSI"] = -1;
-        registeredDevices[s]["RSSI1m"] = -1;
-        registeredDevices[s]["isConnected"] = true;
-        registeredDevices[s]["isExecutingRequest"] = false;
-
-        size_t ipLength = strlen(Ip);
-        size_t urlSize = 7 + ipLength + 7; // "http://" + ip + "/scan\0"
-
-        // Allocate memory for url dynamically
-        char* url = (char*)malloc(urlSize);
-        if (url == nullptr) {
-          Serial.println("Failed to allocate memory for url");
-          xSemaphoreGive(xMutex);
-          return 0;
-        }
-
-        // Construct the URL
-        strcpy(url, "http://");
-        strcat(url, Ip);
-        strcat(url, "/scan");
-
-        registeredDevices[s]["requestScanUrl"] = url;
-
-        writeJSONToFile("/savedDevices.json",registeredDevices);
-
-        if (debug)
-          serializeJson(registeredDevices, Serial);
-        free(url);
-
-        if (deviceStatusResult == 0) {
-          IdsArray[requestSetupCounter] = s;
-          requests[requestSetupCounter].onReadyStateChange(onRequestComplete, &IdsArray[requestSetupCounter]);
-
-          requestSetupCounter++;
-        }
-        xSemaphoreGive(xMutex);
-        return 1;
-    }
-  }
-
-  static bool isDeviceRegistered(const char* Id) {
-    xSemaphoreTake(xMutex, portMAX_DELAY);
-    String s(Id);
-    if (registeredDevices.containsKey(Id)) {
-      xSemaphoreGive(xMutex);
-      return true;
-    }
-
-    xSemaphoreGive(xMutex);
-    return false;
-  }
-
-  // Returns 1 if a device is registered
-  // Returns 0 if a device is not registered
-  // Returns -1 if the id is registered but the ip doesn't match
-  static int isDeviceRegistered(const char* Id, const char* Ip) {
-     xSemaphoreTake(xMutex, portMAX_DELAY);
-    String s(Id);
-    if (!registeredDevices.containsKey(s)) {
-      xSemaphoreGive(xMutex);
-      return 0;
-    }
-    if (strcmp(registeredDevices[s]["ip"].as<const char*>(), Ip) != 0) {
-      xSemaphoreGive(xMutex);
-      return -1;
-    }
-    
-    xSemaphoreGive(xMutex);
-    return 1;
-  }
-
-  static void Print() {
-    xSemaphoreTake(xMutex, portMAX_DELAY);
-    if (debug)
-      Serial.println(registeredDevices.size());
-    for (JsonPair kv : registeredDevices.as<JsonObject>()) {
-      if (debug)
-        Serial.printf("%s(%s) - %s; Distance: %f; RSSI at 1m:%d\n", kv.key().c_str(), registeredDevices[kv.key()]["type"].as<const char*>(), registeredDevices[kv.key()]["ip"].as<const char*>(), registeredDevices[kv.key()]["distance"].as<double>(), registeredDevices[kv.key()]["RSSI1m"].as<int>());
-    }
-    xSemaphoreGive(xMutex);
-  }
-};
-
-String readFile(const String& filePath) {
-  File file = LittleFS.open(filePath, "r");
-  if (!file) {
-    return "";  // Handle file not found or other error
-  }
-
-  // Read the content of the file into a String
-  String content = file.readString();
-  file.close();
-  return content;
-}
-
-
-void serveStaticFile(AsyncWebServerRequest *request, const String& path, const String& contentType) {
-  LittleFS.begin();
-  File file = LittleFS.open(path, "r");
-  if (!file) {
-    request->send(404, "text/plain", "File not found");
-  } else {
-    request->send(file,path, contentType);
-    file.close();
-  }
-}
-
-bool CalibrationBegin = false;
 
 void OnDataRecv(const esp_now_recv_info_t * esp_now_info, const uint8_t *incomingData, int len) {
   // Create a buffer to hold the incoming JSON data
@@ -398,6 +85,12 @@ void OnDataRecv(const esp_now_recv_info_t * esp_now_info, const uint8_t *incomin
   }
   String id(doc["id"].as<const char*>());
 
+  if (!registeredDevices.containsKey(id)) {
+    PushNotification("New Device Connected - "+id,"A new reciever device has been detected and is now added to the device manager.",1);
+  }else if(!registeredDevices[id]["isConnected"].as<bool>()){
+    PushNotification("Device Reconnected - "+id,"A device previously lost connection has now returned online.",1);
+  }
+
   registeredDevices[id]=doc;
   registeredDevices[id]["timeRecieved"]=millis();
 
@@ -412,8 +105,6 @@ void OnDataRecv(const esp_now_recv_info_t * esp_now_info, const uint8_t *incomin
 
 void setup() {
   Serial.begin(115200);
-
-  xMutex = xSemaphoreCreateMutex();
 
   if (!LittleFS.begin()) {
     if (debug)
@@ -474,80 +165,9 @@ void setup() {
     return;
   }
 
-  esp_now_register_recv_cb(OnDataRecv);
-
   //endpoints configuration
   server.serveStatic("/", LittleFS, "/UI/").setDefaultFile("index.html");
   server.serveStatic("/UI/resources/", LittleFS, "/UI/resources/");
-
-  server.on("/device", HTTP_POST, [](AsyncWebServerRequest *request) {
-    IPAddress clientIP = request->client()->remoteIP();
-
-    if (debug)
-      Serial.printf("\n\n---Processing new POST /device request from %s---\n", clientIP.toString().c_str());
-  
-  },
-  nullptr,
-  [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-    if (index == 0) {
-      // New request started
-      if (debug)
-        Serial.println("Receiving request body...");
-    }
-
-    // Append data to the body
-    String body = String((char*)data);
-
-    if (index + len == total) {
-      // All data received
-      if (debug)
-        Serial.printf("Raw request body: %s\n", body.c_str());
-
-      // Parse JSON from the body
-      JsonDocument doc;
-      DeserializationError error = deserializeJson(doc, body.c_str());
-      
-      if (!error) {
-        // Extract data from the JSON
-        if (!(doc.containsKey("DeviceId") && doc.containsKey("CurrentIP") && doc.containsKey("Type") && doc.size() == 3)) {
-          if (debug)
-            Serial.println("Invalid body of the request!");
-          request->send(400);        
-          return;
-        }
-
-        if (debug)
-          Serial.printf(
-            "DeviceId: %s\nClientIP: %s\nType: %s\n", doc["DeviceId"].as<const char*>(), doc["CurrentIP"].as<const char*>(), doc["Type"].as<const char*>());
-
-        switch (DeviceManager::AddNewDevice(doc["DeviceId"].as<const char*>(), doc["CurrentIP"].as<const char*>(), doc["Type"].as<const char*>())) {
-          case -1:
-            request->send(409);
-            if (debug)
-              Serial.println("Conflict occurred");
-            return;
-          case 0:
-            request->send(400);
-            if (debug)
-              Serial.printf("Could not add device - %s", doc["DeviceId"].as<const char*>());
-            return;
-          default:
-            if (debug)
-              Serial.println("Device successfully added!");
-            if (debug)
-              Serial.println("Current devices:");
-            DeviceManager::Print();
-            request->send(200);
-        }
-      } else {
-        if (debug)
-          Serial.println(error.c_str());
-        if (debug)
-          Serial.println("Failed to parse JSON");
-        request->send(400);      
-      }
-    }
-  });
 
   server.on("/distances", HTTP_GET, [&](AsyncWebServerRequest *request) {
     IPAddress clientIP = request->client()->remoteIP();
@@ -559,7 +179,6 @@ void setup() {
 
     JsonDocument doc;
     JsonArray array = doc.to<JsonArray>();
-
     for (JsonPair kv : registeredDevices.as<JsonObject>()) {     
       JsonObject obj = array.add<JsonObject>();
 
@@ -572,8 +191,12 @@ void setup() {
       obj["localIp"]=registeredDevices[kv.key()]["ip"].as<const char*>();
     }
 
+    JsonDocument docToSend;
+    docToSend["newNotifications"]=newNotifications;
+    docToSend["data"]=doc;
+
     String jsonString;
-    serializeJson(doc, jsonString);
+    serializeJson(docToSend, jsonString);
     if (debug)
       Serial.println(jsonString);
 
@@ -584,238 +207,48 @@ void setup() {
     request->send(200, "application/json", jsonString);
   });
 
-  server.on("/calibrationStatus", HTTP_POST, [&](AsyncWebServerRequest *request) {
+  server.on("/notifications", HTTP_GET, [&](AsyncWebServerRequest *request) {
     IPAddress clientIP = request->client()->remoteIP();
 
     if (debug)
-      Serial.printf("\n\n---Proccesing new POST /calibrate request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), request->arg("plain").c_str());
+      Serial.printf("\n\n---Proccesing new POST /notifications request from %s---\n ", clientIP.toString().c_str());
 
-     
+    Serial.println("notifications:");
+    serializeJsonPretty(notificationDoc,Serial);
 
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, request->arg("plain").c_str());
-
-    if (error) {
-        if (debug) {
-            Serial.println("Failed to parse JSON");
-            Serial.println(error.c_str());
-        }
-        request->send(400);
-          
-        return;
-    }
-    
-      // Extract data from the JSON
-      if (!(doc.containsKey("Id") && doc.size() == 1)) {
-        if (debug)
-          Serial.println("Invalid body of the request!");
-        request->send(400);
-          
-        return;
-      }
-
-      const char* recievedId=doc["Id"];
-
-      if (!DeviceManager::isDeviceRegistered(recievedId)) {
-        if (debug) {
-            Serial.println("Error: Device is no longer connected or not registered");
-        }
-       request->send(404);
-        return;
-      } 
-
-        CalibrationBegin = true;
-
-        const char* savedDeviceIp=registeredDevices[recievedId]["Ip"];
-
-        size_t ipLength = strlen(savedDeviceIp);
-        size_t urlSize = 7 + ipLength + 8; // "http://" + ip + "/blinkOn\0"
-        
-        // Allocate memory for url dynamically
-        char* url = (char*)malloc(urlSize);
-        if (url == nullptr) {
-          Serial.println("Failed to allocate memory for url");
-          request->send(500, "text/plain", "Internal Server Error: Memory allocation failed");
-          return;
-        }
-        
-        // Construct the URL
-        strcpy(url, "http://");
-        strcat(url, savedDeviceIp);
-        strcat(url, "/blinkOn");
-        
-        Serial.print("Sending a GET /blinkOn request to ");
-        Serial.println(url);
-
-        requests[numberDevices].setDebug(false);
-        requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {});
-        while (!requests[numberDevices].open("GET", url)) {
-          Serial.println("Wating for reqest to open");
-        }
-        requests[numberDevices].send();
-        request->send(200);
-        free(url);
-
-        return;
-
-  });
-
-  server.on("/startCalibration", HTTP_POST, [&](AsyncWebServerRequest *request) {
-    IPAddress clientIP = request->client()->remoteIP();
-
+    String jsonString;
+    serializeJson(notificationDoc, jsonString);
     if (debug)
-      Serial.printf("\n\n---Proccesing new POST /calibrate request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), request->arg("plain").c_str());
+      Serial.println(jsonString);
 
-     
-
-    if (!CalibrationBegin) {
-      Serial.println("Cannot start calibration without first invoking POST /calibrationStatus");
-      request->send(400);
+    if (jsonString.isEmpty()) {
+      request->send(500);
       return;
     }
+    request->send(200, "application/json", jsonString);
 
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, request->arg("plain").c_str());
-    if (error) {
-        if (debug) {
-            Serial.println("Failed to parse JSON");
-            Serial.println(error.c_str());
-        }
-        request->send(400);
-          
-        return;
-    }
-      // Extract data from the JSON
-      if (!(doc.containsKey("Id") && doc.size() == 1)) {
-        if (debug)
-          Serial.println("Invalid body of the request!");
-        request->send(400);
-          
-        return;
-      }
-
-      const char* recievedId=doc["Id"];
-      if (!DeviceManager::isDeviceRegistered(recievedId)) {
-        if (debug)
-          Serial.println("Error-device is no longer added!");
-       request->send(404);
-        return;
-      }
-
-      const char* savedDeviceIp=registeredDevices[recievedId]["Ip"];
-
-      size_t ipLength = strlen(savedDeviceIp);
-      size_t urlSize = 7 + ipLength + 19; // "http://" + ip + "/beginCalibration\0"
-      
-      // Allocate memory for url dynamically
-      char* url = (char*)malloc(urlSize);
-      if (url == nullptr) {
-        Serial.println("Failed to allocate memory for url");
-        request->send(500, "text/plain", "Internal Server Error: Memory allocation failed");
-        return;
-      }
-      
-      // Construct the URL
-      strcpy(url, "http://");
-      strcat(url, savedDeviceIp);
-      strcat(url, "/beginCalibration");
-      
-      Serial.print("Sending a GET /beginCalibration request to ");
-      Serial.println(url);
-
-      const char* id = doc["Id"]. as<const char*>();
-      requests[numberDevices].onReadyStateChange([id](void* optParm, AsyncHTTPRequest* request, int readyState) {
-        onCalibrationComplete(id, request, readyState);
-      });
-
-      while (!requests[numberDevices].open("GET", url)) {
-        Serial.println("Wating for requests to open");
-      }
-
-      requests[numberDevices].send();
-      requests[numberDevices].setTimeout(10);
-
-      request->send(200);
-      free(url);
+    newNotifications=false;
   });
 
-  server.on("/stopCalibration", HTTP_POST, [&](AsyncWebServerRequest *request) {
+  server.on("/newNotification", HTTP_GET, [&](AsyncWebServerRequest *request) {
     IPAddress clientIP = request->client()->remoteIP();
 
     if (debug)
-      Serial.printf("\n\n---Proccesing new POST /stopCalibration request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), request->arg("plain").c_str());
+      Serial.printf("\n\n---Proccesing new POST /notifications request from %s---\n ", clientIP.toString().c_str());
 
-     
+      JsonDocument latestNotification=notificationsArray[notificationsArray.size() - 1];
+      String jsonString;
+      serializeJson(latestNotification, jsonString);
+      if (debug)
+        Serial.println(jsonString);
 
-    if (!CalibrationBegin) {
-      Serial.println("Cannot stop calibration if it has not yet began!");
-      request->send(405);
-      return;
-    }
-
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, request->arg("plain").c_str());
-
-    if (error) {
-        if (debug) {
-            Serial.println("Failed to parse JSON");
-            Serial.println(error.c_str());
-        }
-        request->send(400);
-          
-        return;
-    }
-
-      if (!(doc.containsKey("Id") && doc.size() == 1)) {
-        if (debug)
-          Serial.println("Invalid body of the request!");
-        request->send(400);
-          
+      if (jsonString.isEmpty()) {
+        request->send(500);
         return;
       }
+      request->send(200, "application/json", jsonString);
 
-      CalibrationBegin = false;
-
-      const char* recievedId=doc["Id"];
-      if (!DeviceManager::isDeviceRegistered(recievedId)) {
-        if (debug)
-          Serial.println("Error-device is no longer added!");
-       request->send(404);
-        return;
-      }
-
-      const char* savedDeviceIp=registeredDevices[recievedId]["Ip"];
-
-      size_t ipLength = strlen(savedDeviceIp);
-      size_t urlSize = 7 + ipLength + 11; // "http://" + ip + "/blinkOff\0"
-      
-      // Allocate memory for url dynamically
-      char* url = (char*)malloc(urlSize);
-      if (url == nullptr) {
-        Serial.println("Failed to allocate memory for url");
-        request->send(500, "text/plain", "Internal Server Error: Memory allocation failed");
-        return;
-      }
-      
-      // Construct the URL
-      strcpy(url, "http://");
-      strcat(url, savedDeviceIp);
-      strcat(url, "/blinkOff");
-      
-      Serial.print("Sending a GET /blinkOff request to ");
-      Serial.println(url);
-
-      requests[numberDevices].setDebug(false);
-      requests[numberDevices].onReadyStateChange([](void* optParm, AsyncHTTPRequest* request, int readyState) {});
-
-      while (!requests[numberDevices].open("GET", url)) {
-        Serial.println("Wating for the request to open");
-      }
-
-      requests[numberDevices].send();
-      Serial.println("Calibration canceled!");
-      request->send(200);
-      free(url);
+      newNotifications=false;   
   });
 
   server.on("/map", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -826,92 +259,21 @@ void setup() {
 
      
 
-    File map = LittleFS.open("/map.json", "w+");
+    File map = LittleFS.open("/UI/resources/map.json", "w+");
     map.print(request->arg("plain").c_str());
     map.close();
 
     request->send(200);
   });
 
-  server.on("/map", HTTP_GET, [](AsyncWebServerRequest *request) {
-    IPAddress clientIP = request->client()->remoteIP();
-
-    if (debug)
-      Serial.printf("\n\n---Proccesing new GET /map request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), request->arg("plain").c_str());
-
-     
-    if (!LittleFS.exists("/map.json")) {
-     request->send(404);
-      return;
-    }
-
-    File map = LittleFS.open("/map.json", "r");
-    request->send(200, "application/json", map.readString());
-    map.close();
-  });
-
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   server.begin();
+  
   if (debug)
-    Serial.println("HTTP server started");
+    Serial.println("HTTP server started"); 
+
+  esp_now_register_recv_cb(OnDataRecv);
 }
-
-
-void onCalibrationComplete(const char* Id, AsyncHTTPRequest* request, int readyState) {
-  if (readyState == readyStateDone) {
-    if (debug)
-      Serial.print("Calibration request completed -> ");
-
-    if (debug)
-      Serial.println(request->responseHTTPString());
-
-    if (debug)
-      Serial.print("Response: ");
-    char* body = request->responseLongText();
-    if (debug)
-      Serial.println(body);
-
-    if (request->responseHTTPcode() == 404) {
-      Serial.println("Couldnt calibrate! Beacon out of range!");
-      CalibrationBegin = false;
-      return;
-    }
-
-    if (request->responseHTTPcode() == 405) {
-      Serial.println("Calibration not initialized!");
-      return;
-    }
-
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, body);
-    if (!error) {
-      // Extract data from the JSON
-      if (!(doc.containsKey("rssi1m") && doc.size() == 1)) {
-        if (debug)
-          Serial.println("Invalid body of the request!");
-        return;
-      }
-
-      String s(Id);
-      registeredDevices[s]["RSSI1m"]=doc["rssi1m"].as<int>();
-
-      CalibrationBegin = false;
-      return;
-
-
-    } else {
-      CalibrationBegin = false;
-      if (debug)
-        Serial.println(error.c_str());
-      if (debug) {
-        Serial.print("Failed to parse JSON - ");
-        Serial.println(Id);
-      }
-
-      return;
-    }
-  }
-}
-
 
 unsigned long previuosTime = 0;
 void loop() {
@@ -919,19 +281,17 @@ void loop() {
 
     //check for devices which havent supplyied data for over 10 sec every 10 sec
     if (currentMillis - previuosTime >= 10000) {
+      Serial.print("Free heap: ");
+      Serial.println(ESP.getFreeHeap());
       previuosTime = currentMillis;
       for (JsonPair kv : registeredDevices.as<JsonObject>()) {
         if (registeredDevices[kv.key()]["isConnected"].as<bool>()&&currentMillis-registeredDevices[kv.key()]["timeRecieved"].as<unsigned long>()>10000) {
           Serial.println("Device timeout");
           Serial.println(kv.key().c_str());
           registeredDevices[kv.key()]["isConnected"]=false;
+          String id(kv.key().c_str());
+          PushNotification("Device Disconnected - "+id,"A reciver has not sent any data for over 10 sec and is now marked as not connected",2);
         }   
       }
     }
-    // 2-second interval for sending requests
-    // if (!CalibrationBegin && currentMillis - previuosTime >= 2000) {
-    //   previuosTime = currentMillis;
-
-    //   sendGetScanRequests();
-    // }
 }
