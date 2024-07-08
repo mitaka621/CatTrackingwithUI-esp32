@@ -13,14 +13,13 @@
 #define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
-const char *DeviceId = "couch";
+const char *DeviceId = "behind pc";
 const char *DeviceType = "ESP32";
 
 
 const char *ssid = "ditoge03";
 const char *password = "mitko111";
 
-const char *ServerAddress = "http://192.168.0.9/";
 uint8_t broadcastAddress[] = {0xA0, 0xA3, 0xB3, 0x2F, 0x91, 0x24};
 
 //mac address for the BLE beacon
@@ -248,9 +247,15 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
+  int failCounter=0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    Serial.println("Connecting to WiFi...");
+      Serial.println("Connecting to WiFi...");
+
+    failCounter++;
+    if (failCounter>=20) {
+    ESP.restart();
+    }
   }
 
   Serial.println("WiFi connected");
@@ -409,6 +414,11 @@ void loop() {
 
   //send new package every 1 sec
   if (!isLEDOn&& esp_timer_get_time() - previousSend >= 1000000) {
+    if(WiFi.status() != WL_CONNECTED){
+      Serial.println("Wifi lost connection");
+      WiFi.disconnect();
+      WiFi.begin(ssid, password);
+    }
     previousSend = esp_timer_get_time();
     SendDataESPNow();
   }
