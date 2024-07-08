@@ -1,0 +1,5 @@
+WHEN USING THIS FILE IT SHOULD BE CALLED "config.json" (remove "exmaple" and this comment)
+{
+    "ssid":"your ssid",
+    "password":"your password"
+}
