@@ -21,19 +21,22 @@ const bool debug = true;
 const long gmtOffset_sec = 2 * 3600; // Adjust this for standard time (EET, UTC+2)
 const int daylightOffset_sec = 1 * 3600; // Additional offset for DST (UTC+3)
 
-const char *ntpServer = "time.google.com";
+const char *ntpServer = "pool.ntp.org";
 
 String GetLocalTime() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
     Serial.println("Failed to obtain time");
-    return "";
+    delay(1000);
+    return GetLocalTime();
   }
+
   char isoDateTime[25];
-  strftime(isoDateTime, sizeof(isoDateTime), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);  
+  strftime(isoDateTime, sizeof(isoDateTime), "%Y-%m-%dT%H:%M:%S%z", &timeinfo);  
 
   return String(isoDateTime);
 }
+
 JsonDocument notificationDoc;
 JsonArray notificationsArray= notificationDoc.to<JsonArray>();
 bool newNotifications=false;
@@ -275,6 +278,16 @@ void setup() {
   });
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+
+  // Wait for time to be set
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time during setup");
+    ESP.restart();
+  } else {
+    Serial.println("Time synchronized during setup");
+  }
+
   server.begin();
   
   if (debug)
