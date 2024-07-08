@@ -8,14 +8,43 @@ LoadMapFromServer();
 document.querySelector(".container").innerHTML = "";
 displayNotifications();
 
-function createNotification(level, title, message) {
+function formatDateTime(isoString) {
+  const date = new Date(isoString);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+
+  return `${hours}:${minutes}:${seconds} - ${day}.${month}.${year}`;
+}
+
+async function createNotification(level, title, message, dateTimeNotif) {
   const notificationContainer = document.createElement('div');
   notificationContainer.className = `notificationcontainer level${level}`;
 
   const deleteLink = document.createElement('a');
-  deleteLink.onclick = function () {
-    deleteNotification(notificationContainer);
-  };
+  deleteLink.setAttribute("onclick", "deleteNotification(this)");
+
+  const notifLevelBanner = document.createElement('div');
+  const pLevel = document.createElement('p');
+  switch (level) {
+    case 1:
+      notifLevelBanner.className = 'notification-level';
+      pLevel.textContent = "Information";
+      break;
+    case 2:
+      notifLevelBanner.className = 'notification-level';
+      pLevel.textContent = "Warning";
+      break;
+    case 3:
+      notifLevelBanner.className = 'notification-level-reverse';
+      pLevel.textContent = "Danger Needs Attention";
+      break;
+  }
+
+  notifLevelBanner.appendChild(pLevel);
 
   const deleteIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   deleteIcon.setAttribute('height', '1em');
@@ -26,6 +55,8 @@ function createNotification(level, title, message) {
   deleteLink.appendChild(deleteIcon);
   notificationContainer.appendChild(deleteLink);
 
+  notificationContainer.appendChild(notifLevelBanner);
+
   const titleElement = document.createElement('h2');
   titleElement.textContent = title;
   notificationContainer.appendChild(titleElement);
@@ -35,11 +66,36 @@ function createNotification(level, title, message) {
   messageElement.textContent = message;
   notificationContainer.appendChild(messageElement);
 
+  const dateTime = document.createElement('p');
+  dateTime.className = 'date-time';
+  if (dateTimeNotif) {
+    dateTime.textContent = formatDateTime(dateTimeNotif);
+  } else {
+    dateTime.textContent = 'Unknown';
+  }
+  notificationContainer.appendChild(dateTime);
+
+  if (document.getElementById("no-notifications-alert")) {
+    document.getElementById("no-notifications-alert").remove();
+  }
+
+  notificationContainer.style.maxHeight = 0;
+  notificationContainer.style.maxWidth = 0;
+  notificationContainer.style.marginTop = 0;
+  notificationContainer.style.marginBottom = 0;
+
   if (document.querySelector(".container").childElementCount != 0) {
     document.querySelector(".container").insertBefore(notificationContainer, document.querySelector(".container").firstChild);
   } else {
     document.querySelector(".container").appendChild(notificationContainer);
   }
+
+  await setTimeout(() => {
+    notificationContainer.style.marginTop = '1em';
+    notificationContainer.style.marginBottom = '1em';
+    notificationContainer.style.maxHeight = '999px';
+    notificationContainer.style.maxWidth = '100%';
+  }, 100);
 }
 
 function displayNotifications() {
@@ -47,7 +103,7 @@ function displayNotifications() {
     .then(r => r.json())
     .then(j => {
       j.forEach(notification => {
-        createNotification(notification.notificationLevel, notification.title, notification.description);
+        createNotification(notification.notificationLevel, notification.title, notification.description, notification.dateTime);
       })
     });
 }
@@ -55,7 +111,7 @@ function displayNotifications() {
 function displayOnlyLatestNotification() {
   fetch("/newNotification")
     .then(r => r.json())
-    .then(j => createNotification(j.notificationLevel, j.title, j.description));
+    .then(j => createNotification(j.notificationLevel, j.title, j.description, j.dateTime));
 }
 
 async function displayDevices() {
