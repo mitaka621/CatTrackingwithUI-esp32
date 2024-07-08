@@ -1,5 +1,5 @@
 window.addEventListener("load", () =>
-  document.querySelectorAll(".button2").forEach(b=>b.addEventListener("click", unwrap))
+  document.querySelectorAll(".button2").forEach(b => b.addEventListener("click", unwrap))
 );
 
 let isUnwrapped = true;
@@ -28,7 +28,7 @@ function deleteNotification(e) {
     e.parentElement.remove();
     if (grandparent.innerText === "") {
       grandparent.innerHTML =
-        '<h2 style="color:white; margin-top:0.5em">No unseen notifications.</h2>';
+        '<h2 id="no-notifications-alert" style="color:white; margin-top:0.5em">No unseen notifications.</h2>';
     }
   }, 500);
 }

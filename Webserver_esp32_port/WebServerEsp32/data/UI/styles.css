@@ -172,13 +172,14 @@ main {
 }
 .notificationcontainer {
   overflow: hidden;
-  max-height: 100%;
+  max-height: 999px;
   max-width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   background-color: #31e981;
   width: 22em;
+  height: fit-content;
   margin: 1em auto;
   border-radius: 2em;
   color: black;
@@ -600,4 +601,41 @@ h2.location-name{
 }
 #location-name{
   color: #31e981;
+}
+
+.notification-level{
+  background-color: #57269c;
+  color: white;
+  width: 100%;
+}
+.notification-level p,.notification-level-reverse p{
+  padding: 0;
+  font-size: 1.5em;
+}
+.notification-level-reverse{
+  background-color: #ebebeb;
+  color: #3f1b72;
+  width: 100%;
+}
+
+p.date-time{
+  font-weight: 600;
+  font-size: 2em;
+  border-top: 3px solid #57269c;
+  width: 100%;
+  padding: 0;
+
+}
+
+.level1>p.date-time{
+  background-color: #8fd4ad;
+}
+
+.level2>p.date-time{
+  background-color: #d4b38c;
+}
+
+.level3>p.date-time{
+  border-top: 3px solid #c5c5c2;
+  background-color: #1a013d;
 }
