@@ -37,7 +37,7 @@ header img {
   margin-right: -0.5em;
   -webkit-transform: rotate(10deg);
   transform: rotate(10deg);
- 
+  filter: brightness(0) saturate(100%) invert(23%) sepia(91%) saturate(3635%) hue-rotate(253deg) brightness(95%) contrast(89%);
   width: 2em;
 }
 .red{
@@ -99,7 +99,6 @@ main {
   display: flex;
   width: 1600px;
   margin: 0 auto;
-
   box-shadow: -4px 1px 14px 13px rgba(0, 0, 0, 1);
   -webkit-box-shadow: -4px 1px 14px 13px rgba(0, 0, 0, 1);
   -moz-box-shadow: -4px 1px 14px 13px rgba(0, 0, 0, 1);
@@ -384,7 +383,7 @@ div.height-measuring div {
   text-align: center;
   color: white;
 
-  z-index: 1000;
+  z-index: 10;
 }
 .mapbtn {
   background-color: #8338eca9;
@@ -594,9 +593,9 @@ text-align: center;
 }
 
 h2.location-name{
-  padding: 3em 0 0.5em 0;
+  padding: 0.3em 0 0 0;
   text-align: center;
-  font-size: 2.5em;
+  font-size: 2.2em;
  
 }
 #location-name{
@@ -638,4 +637,78 @@ p.date-time{
 .level3>p.date-time{
   border-top: 3px solid #c5c5c2;
   background-color: #1a013d;
+}
+
+.title {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  animation: fadeIn 3s forwards, moveDown 5s forwards;
+  transition: top 2s ease;
+  z-index: 21;
+}
+
+body, html {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #ebebeb;
+  color: #000;
+}
+
+.background-container {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #ebebeb;
+  opacity: 1;
+  transition: opacity 1s ease;
+  z-index: 20;
+}
+
+.shape {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: #000;
+  animation: flyUp 10s ease-out infinite; /* Faster and smoother easing */
+  transition: top 2s ease;
+}
+
+
+@keyframes fadeIn {
+  0% {
+      opacity: 0;
+  }
+  100% {
+      opacity: 1;
+  }
+}
+
+@keyframes moveDown {
+  100% {
+      transform: translate(-50%, -200%);
+  }
+  0% {
+      transform: translate(-50%, 50%);
+  }
+}
+
+@keyframes flyUp {
+  0% {
+      transform: translateY(-1000%);
+      opacity: 1; 
+  }
+  80% {
+      opacity: 1; 
+  }
+  100% {
+      transform: translateY(2000%);
+      opacity: 0; 
+  }
 }

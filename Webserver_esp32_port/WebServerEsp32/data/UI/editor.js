@@ -1,3 +1,51 @@
+const backgroundContainer = document.querySelector('.background-container');
+
+// Function to generate a random integer between min and max
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// Function to generate a random polygon shape
+function generatePolygonPoints() {
+  let points = '';
+  for (let i = 0; i < 5; i++) {
+    const x = getRandomInt(0, 100);
+    const y = getRandomInt(0, 100);
+    points += `${x}% ${y}%, `;
+  }
+  return points.slice(0, -2);
+}
+
+// Generate multiple shapes and append them to the background container
+for (let i = 0; i < 50; i++) {
+  const shape = document.createElement('div');
+  shape.classList.add('shape');
+  shape.style.left = `${getRandomInt(0, window.innerWidth)}px`;
+  shape.style.top = `${getRandomInt(10, Number(getComputedStyle(document.querySelector(".background-container")).height.split("p")[0]))}px`; // Spawning above the top of the page
+  shape.style.animationDuration = `${getRandomInt(10, 20)}s`;
+  shape.style.width = `${getRandomInt(10, 30)}px`;
+  shape.style.height = `${getRandomInt(10, 30)}px`;
+  shape.style.clipPath = `polygon(${generatePolygonPoints()})`;
+  backgroundContainer.appendChild(shape);
+}
+document.addEventListener('DOMContentLoaded', () => {
+
+
+  const title = document.querySelector('.title');
+
+  setTimeout(() => {
+    title.style.top = "-100%";
+    document.querySelectorAll(".shape").forEach(x => x.style.top = '2000px');
+
+  }, 3000);
+
+  setTimeout(() => {
+    document.querySelector(".background-container").style.opacity = 0;
+    document.querySelector("header").style.display = "none";
+  }, 4000);
+  setTimeout(() => document.querySelector(".background-container").style.display = "none", 5000);
+});
+
 let timeoutId;
 
 let oldCursorPosX = 0,
@@ -70,7 +118,7 @@ function EditMap() {
 
   const placedDevices = Array.from(document.querySelectorAll(".recieverID"));
   document.querySelectorAll(".devicecontainer").forEach((item) => {
-   
+
     if (
       !placedDevices.find((x) => x.textContent === item.children[0].textContent)
     ) {
@@ -93,8 +141,8 @@ function EditMap() {
       item.classList += " hover";
 
       item.querySelector(".measuring").style.visibility = item.offsetWidth > 60 ? "visible" : "hidden";
-      
-      item.querySelector(".height-measuring").style.visibility = item.offsetHeight > 60 ? "visible" : "hidden";    
+
+      item.querySelector(".height-measuring").style.visibility = item.offsetHeight > 60 ? "visible" : "hidden";
     }
 
     document.addEventListener("mouseup", () => {
@@ -128,12 +176,12 @@ function ExitEditor() {
     btn.style.maxWidth = "41px";
   }, 300);
   document.querySelectorAll(".devicecontainer").forEach((item) => {
-  
-    if (item.children[1].classList.value==="offline") {
-      item.classList="devicecontainer offline";
+
+    if (item.children[1].classList.value === "offline") {
+      item.classList = "devicecontainer offline";
     }
     else
-    item.classList = "devicecontainer";
+      item.classList = "devicecontainer";
     item.style.cursor = "auto";
     item.setAttribute("draggable", "null");
     item.setAttribute("ondragstart", "null");
@@ -159,17 +207,17 @@ function ExitEditor() {
     item.removeEventListener("mousedown", Hold);
     if (!item.classList.contains("reciever")) {
       item.classList.remove("hover")
-      
-      item.querySelector(".measuring").style.visibility="hidden";
 
-      item.querySelector(".height-measuring").style.visibility="hidden";
+      item.querySelector(".measuring").style.visibility = "hidden";
+
+      item.querySelector(".height-measuring").style.visibility = "hidden";
     }
     document.removeEventListener("mouseup", () =>
       cancelAnimationFrame(animationFrameId)
     );
   });
 
-  document.querySelector(".popup-menu").style.display="none";
+  document.querySelector(".popup-menu").style.display = "none";
 
   document.querySelector(".button").removeEventListener("click", ExitEditor);
   document.querySelector(".button").addEventListener("click", EditMap);
@@ -336,14 +384,14 @@ function drop(ev) {
   newReciver.style.top = ev.layerY + "px";
   newReciver.style.left = ev.layerX + "px";
   newReciver.addEventListener("mousedown", Hold);
-  
+
 
   ev = ev.target;
   if (ev.classList.contains("reciever")) {
     ev = document.querySelector(".map");
   }
-  if(ev.nodeName==="INPUT")
-    ev=ev.parentElement.parentElement;
+  if (ev.nodeName === "INPUT")
+    ev = ev.parentElement.parentElement;
 
   ev.appendChild(newReciver);
 }
@@ -363,9 +411,9 @@ function deleteBlocks(e) {
       if (!String(item.classList).includes("inactive"))
         item.setAttribute("draggable", "null");
       item.setAttribute("ondragstart", "null");
-      if ( !item.classList.contains("inactive")) {
+      if (!item.classList.contains("inactive")) {
         item.classList += " inactive";
-      }     
+      }
       item.style.cursor = "auto";
     });
     document.querySelectorAll(".object").forEach((item) => {
@@ -379,7 +427,7 @@ function deleteBlocks(e) {
         cancelAnimationFrame(animationFrameId)
       );
       item.classList.add("red");
-    
+
     });
   } else {
     document.querySelector(".mapcontrols").style.visibility = "visible";
@@ -415,7 +463,7 @@ function deleteBlocks(e) {
         item.classList.remove("inactive");
 
         if (item.querySelector("p.offline")) {
-          item.classList+=" offline";
+          item.classList += " offline";
         }
 
         item.setAttribute("draggable", "true");
@@ -470,17 +518,17 @@ function Load() {
       var reader = new FileReader();
       reader.onload = function () {
 
-       
+
 
         const obj = JSON.parse(reader.result);
 
-        fetch(serverIp+'/map', {
+        fetch(serverIp + '/map', {
           method: 'POST',
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(obj) 
+          body: JSON.stringify(obj)
         });
 
         document.querySelector(".map").innerHTML =
@@ -508,10 +556,10 @@ function Load() {
 function zoom() {
   zoomLevel *= 1.5;
   document.querySelectorAll(".object").forEach((item) => {
-    
-      item.style.height = item.clientHeight * 1.5 + "px";
-      item.style.width = item.clientWidth * 1.5 + "px";
-    
+
+    item.style.height = item.clientHeight * 1.5 + "px";
+    item.style.width = item.clientWidth * 1.5 + "px";
+
 
     var oldTop = Number(window.getComputedStyle(item).top.split("p")[0]);
     var oldLeft = Number(window.getComputedStyle(item).left.split("p")[0]);
@@ -527,10 +575,10 @@ function zoom() {
 function zoomOut() {
   zoomLevel /= 1.5;
   document.querySelectorAll(".object").forEach((item) => {
-   
-      item.style.height = item.clientHeight / 1.5 + "px";
-      item.style.width = item.clientWidth / 1.5 + "px";
-    
+
+    item.style.height = item.clientHeight / 1.5 + "px";
+    item.style.width = item.clientWidth / 1.5 + "px";
+
 
     var oldTop = Number(window.getComputedStyle(item).top.split("p")[0]);
     var oldLeft = Number(window.getComputedStyle(item).left.split("p")[0]);
@@ -549,55 +597,54 @@ function moveMap() {
 
 function AddOutline(selected) {
   if (selected.classList.contains("reciever")) {
-    document.querySelectorAll("div.object:not(.reciever)").forEach(item=>{
+    document.querySelectorAll("div.object:not(.reciever)").forEach(item => {
       item.removeEventListener("mousedown", Hold);
     });
-    selected.classList+=" reciverhover";
-    selected.querySelector("p").style.visibility="visible";
-    document.querySelector(`div.devicecontainer[id="${selected.querySelector("p").textContent}"]`).classList+=" reciverhover";
+    selected.classList += " reciverhover";
+    selected.querySelector("p").style.visibility = "visible";
+    document.querySelector(`div.devicecontainer[id="${selected.querySelector("p").textContent}"]`).classList += " reciverhover";
     return;
   }
 
-  selected.classList+=" reciverhover";
-  var obj=Array.from(document.querySelectorAll(".recieverID")).find((e)=>e.textContent==selected.id);
+  selected.classList += " reciverhover";
+  var obj = Array.from(document.querySelectorAll(".recieverID")).find((e) => e.textContent == selected.id);
   if (obj) {
-    obj.style.visibility="visible";
-    obj.parentElement.classList+=" reciverhover";
+    obj.style.visibility = "visible";
+    obj.parentElement.classList += " reciverhover";
   }
 }
 
 function RemoveOutline(selected) {
   if (selected.classList.contains("reciever")) {
-    document.querySelectorAll("div.object:not(.reciever)").forEach(item=>{
+    document.querySelectorAll("div.object:not(.reciever)").forEach(item => {
       item.addEventListener("mousedown", Hold);
     });
     selected.classList.remove("reciverhover");
-    selected.querySelector("p").style.visibility="hidden";
+    selected.querySelector("p").style.visibility = "hidden";
 
     document.querySelector(`div.devicecontainer[id="${selected.querySelector("p").textContent}"]`).classList.remove("reciverhover");
-    
+
     return;
   }
   selected.classList.remove("reciverhover");
-  var obj=Array.from(document.querySelectorAll(".recieverID")).find((e)=>e.textContent==selected.id);
+  var obj = Array.from(document.querySelectorAll(".recieverID")).find((e) => e.textContent == selected.id);
   if (obj) {
-    obj.style.visibility="hidden";
+    obj.style.visibility = "hidden";
     obj.parentElement.classList.remove("reciverhover");
   }
 }
 
 function OpenPopupMenu(e) {
 
- var menu= document.querySelector(".popup-menu");
- if (menu.style.display==="flex") {
-  menu.style.display="none";
-  e.style.color="white";
- }
- else
- {
-  menu.style.display="flex";
-  e.style.color="#ffe205";
-}notificationcontainer
+  var menu = document.querySelector(".popup-menu");
+  if (menu.style.display === "flex") {
+    menu.style.display = "none";
+    e.style.color = "white";
+  }
+  else {
+    menu.style.display = "flex";
+    e.style.color = "#ffe205";
+  } notificationcontainer
 }
 
 function AddNewBlock() {
@@ -611,7 +658,7 @@ function AddNewBlock() {
   });
 }
 
-function AddNewRoom(){
+function AddNewRoom() {
   const div = document.createElement("div");
   div.classList = "object hover room";
   div.innerHTML = `<div class="measuring"style="visibility:visible;"><input type="text" name="roomName" placeholder="Enter room name"><p><</p><div></div><p class="measurement">${pxToM(500)}m</p><div></div><p>></p></div><div class="height-measuring" style="visibility: visible;"><p>></p><div></div><p class="measurement-height">${pxToM(200)}m</p><div></div><p><</p></div>`;
