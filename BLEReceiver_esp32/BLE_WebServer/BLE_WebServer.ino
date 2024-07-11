@@ -13,7 +13,7 @@
 #define SCAN_INTERVAL 10 //10 milisecs
 #define LED 2
 
-const char *DeviceId = "behind pc";
+const char *DeviceId = "psu";
 const char *DeviceType = "ESP32";
 
 
@@ -54,15 +54,16 @@ struct ScanResult {
   NimBLEAddress address;
 };
 
+int64_t lastScanResultTime=0;
+
 //runs on core 0
 void scanTask(void *pvParameters) {
   for(;;) {
     Serial.println("Starting BLE scan...");
     pBLEScan->start(0, nullptr, false);
 
-    int64_t startTime = esp_timer_get_time();
     while (pBLEScan->isScanning()) {
-      if (esp_timer_get_time() - startTime >= 30000000) {
+      if (esp_timer_get_time() - lastScanResultTime >= 30000000) {
         Serial.println("Failed to get RSSI from beacon. Out of range!");
         roundedDistance = -1;
         avgRSSI = -1;
@@ -153,6 +154,7 @@ class MyAdvertisedDeviceCallbacks : public NimBLEAdvertisedDeviceCallbacks {
     if (strcmp(beaconMAC, advertisedDevice->getAddress().toString().c_str()) == 0) {
       int rssi = advertisedDevice->getRSSI();
       if (rssi != 0) {
+        lastScanResultTime=esp_timer_get_time();
         if (isCalibrating) {
           calibrationRssiArr[calibrationCounter++]=rssi;
           Serial.printf("Calibration progress %d/%d\n", calibrationCounter,CalibratingRssiSampleSize);
