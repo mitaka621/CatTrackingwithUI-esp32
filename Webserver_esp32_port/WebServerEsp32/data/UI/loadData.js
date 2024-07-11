@@ -378,6 +378,7 @@ function LoadMapFromServer() {
         document.querySelector(".map").appendChild(div);
       });
 
+      resizeCanvas();
       ExitEditor();
     })
 }
@@ -409,15 +410,24 @@ function clearAllDistance() {
   })
 }
 
-const canvas = document.getElementById('position-canvas');
-const ctx = canvas.getContext('2d');
+let canvas;
+let ctx;
+
+function initCanvas() {
+  canvas = document.getElementById('position-canvas');
+  ctx = canvas.getContext('2d');
+}
+
+
 
 function clearCanvas() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 }
 
 function drawTriangle(arr) {
+  initCanvas();
   clearCanvas();
+  resizeCanvas();
 
   if (arr.length === 0) {
     return;
@@ -443,5 +453,8 @@ function resizeCanvas() {
   const container = document.querySelector('.map');
   canvas.setAttribute("width", getComputedStyle(container).width);
   canvas.setAttribute("height", getComputedStyle(container).height);
+
 }
+
+initCanvas();
 resizeCanvas();

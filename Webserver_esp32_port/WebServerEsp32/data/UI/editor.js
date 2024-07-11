@@ -558,6 +558,8 @@ function Load() {
           }
           document.querySelector(".map").appendChild(div);
         });
+
+        resizeCanvas();
       };
 
       reader.readAsText(file);
