@@ -16,7 +16,7 @@ IPAddress dns(8, 8, 8, 8);
 
 AsyncWebServer server(80);
 
-const bool debug = true;
+const bool debug = false;
 
 const long gmtOffset_sec = 2 * 3600; // Adjust this for standard time (EET, UTC+2)
 const int daylightOffset_sec = 1 * 3600; // Additional offset for DST (UTC+3)
@@ -114,6 +114,8 @@ void OnDataRecv(const esp_now_recv_info_t * esp_now_info, const uint8_t *incomin
   Serial.print(".");
 }
 
+String bodyBuffer = "";
+
 void setup() {
   Serial.begin(115200);
 
@@ -184,7 +186,7 @@ void setup() {
     IPAddress clientIP = request->client()->remoteIP();
 
     if (debug)
-      Serial.printf("\n\n---Proccesing new POST /distances request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), request->arg("plain").c_str());
+      Serial.printf("\n\n---Proccesing new GET /distances request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), request->arg("plain").c_str());
 
      
 
@@ -262,19 +264,36 @@ void setup() {
       newNotifications=false;   
   });
 
-  server.on("/map", HTTP_POST, [](AsyncWebServerRequest *request) {
-    IPAddress clientIP = request->client()->remoteIP();
+  server.on("/map", HTTP_POST, [](AsyncWebServerRequest *request){
+    // This part will be called when headers are received
+    request->send(200, "text/plain", "Processing POST request");
+  }, 
+  NULL,
+  [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (index == 0) {
+        // Clear buffer at the start of a new request
+        bodyBuffer = "";
+        bodyBuffer.reserve(total); // Reserve space for the entire body
+      }
 
-    if (debug)
-      Serial.printf("\n\n---Proccesing new POST /map request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), request->arg("plain").c_str());
+      // Append incoming chunk to the buffer
+      for (size_t i = 0; i < len; i++) {
+        bodyBuffer += (char)data[i];
+      }
 
-     
-
-    File map = LittleFS.open("/UI/resources/map.json", "w+");
-    map.print(request->arg("plain").c_str());
-    map.close();
-
-    request->send(200);
+      if (index + len == total) {
+        // Full body received
+        IPAddress clientIP = request->client()->remoteIP();
+          Serial.printf("\n\n---Processing new POST /map request from %s---\nraw request body: %s\n", clientIP.toString().c_str(), bodyBuffer.c_str());
+        File map = LittleFS.open("/UI/resources/map.json", "w+");
+        if (map) {
+          map.print(bodyBuffer);
+          map.close();
+          Serial.println("File successfully written");
+        } else {
+          Serial.println("Failed to open file for writing");
+        }
+      }
   });
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
@@ -302,6 +321,35 @@ void loop() {
 
     //check for devices which havent supplyied data for over 10 sec every 10 sec
     if (currentMillis - previuosTime >= 10000) {
+      if(WiFi.status() != WL_CONNECTED){
+        Serial.println("Wifi lost connection");
+        WiFi.disconnect();
+
+        File configFile = LittleFS.open("/config.json", "r");
+        String contents = configFile.readString();
+
+        JsonDocument config;
+        deserializeJson(config, contents);
+        if (config.isNull()) {
+          if (debug)
+            Serial.printf("\n\nFailed to load config file! (data/config.json)");
+          return;
+        }
+
+        if (debug)
+          Serial.println();
+        if (debug)
+          Serial.println("Config loaded:");
+        if (debug)
+          Serial.println(contents);
+
+        configFile.close();
+
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(config["ssid"]. as<const char*>(), config["password"]. as<const char*>());
+        WiFi.config(staticIP, gateway, subnet, dns);
+
+      }
       Serial.print("Free heap: ");
       Serial.println(ESP.getFreeHeap());
       previuosTime = currentMillis;
