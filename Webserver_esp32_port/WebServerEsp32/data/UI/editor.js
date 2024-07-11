@@ -157,6 +157,17 @@ function EditMap() {
 }
 
 function ExitEditor() {
+  const mapJson = GenerateMapJsonString();
+  fetch(serverIp + '/map', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Content-Length': mapJson.length
+    },
+    body: mapJson
+  });
+
   const btn = document.querySelector(".button");
   btn.style.maxWidth = "0";
   document.querySelector(".container").style.height = "100%";
@@ -488,14 +499,18 @@ function createElementFromHTML(htmlString) {
   return div.firstChild;
 }
 
-function Save() {
+function GenerateMapJsonString() {
   const obj = [];
 
   document
-    .querySelectorAll(".object")
+    .querySelectorAll("div.map>.object")
     .forEach((item) => obj.push(item.outerHTML));
 
-  var json_string = JSON.stringify(obj);
+  return JSON.stringify(obj);
+}
+
+function Save() {
+  var json_string = GenerateMapJsonString();
 
   var link = document.createElement("a");
   link.download = "mapLayout.json";
@@ -503,8 +518,6 @@ function Save() {
   link.href = window.URL.createObjectURL(blob);
   link.click();
 }
-
-
 
 function Load() {
   var element = document.createElement("div");
@@ -517,22 +530,20 @@ function Load() {
     if (file.name.match(/\.(txt|json)$/)) {
       var reader = new FileReader();
       reader.onload = function () {
-
-
-
         const obj = JSON.parse(reader.result);
 
         fetch(serverIp + '/map', {
           method: 'POST',
           headers: {
             'Accept': 'application/json',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Content-Length': reader.result.length
           },
-          body: JSON.stringify(obj)
+          body: reader.result
         });
 
         document.querySelector(".map").innerHTML =
-          '<div class="mapcontrols"> <div class="mapbtn" onclick="zoom()">+</div> <div class="mapbtn move"> <svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512" > <!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --> <style> svg { fill: #ffffff; } </style> <path d="M278.6 9.4c-12.5-12.5-32.8-12.5-45.3 0l-64 64c-9.2 9.2-11.9 22.9-6.9 34.9s16.6 19.8 29.6 19.8h32v96H128V192c0-12.9-7.8-24.6-19.8-29.6s-25.7-2.2-34.9 6.9l-64 64c-12.5 12.5-12.5 32.8 0 45.3l64 64c9.2 9.2 22.9 11.9 34.9 6.9s19.8-16.6 19.8-29.6V288h96v96H192c-12.9 0-24.6 7.8-29.6 19.8s-2.2 25.7 6.9 34.9l64 64c12.5 12.5 32.8 12.5 45.3 0l64-64c9.2-9.2 11.9-22.9 6.9-34.9s-16.6-19.8-29.6-19.8H288V288h96v32c0 12.9 7.8 24.6 19.8 29.6s25.7 2.2 34.9-6.9l64-64c12.5-12.5 12.5-32.8 0-45.3l-64-64c-9.2-9.2-22.9-11.9-34.9-6.9s-19.8 16.6-19.8 29.6v32H288V128h32c12.9 0 24.6-7.8 29.6-19.8s2.2-25.7-6.9-34.9l-64-64z" /> </svg> </div> <div class="mapbtn" onclick="zoomOut()">-</div> </div>';
+          '<canvas id="position-canvas" class="position-display"></canvas><div class="mapcontrols"><div class="mapbtn" onclick="zoom()">+</div> <div class="mapbtn move"> <svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512" > <!--! Font Awesome Free 6.4.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2023 Fonticons, Inc. --> <style> svg { fill: #ffffff; } </style> <path d="M278.6 9.4c-12.5-12.5-32.8-12.5-45.3 0l-64 64c-9.2 9.2-11.9 22.9-6.9 34.9s16.6 19.8 29.6 19.8h32v96H128V192c0-12.9-7.8-24.6-19.8-29.6s-25.7-2.2-34.9 6.9l-64 64c-12.5 12.5-12.5 32.8 0 45.3l64 64c9.2 9.2 22.9 11.9 34.9 6.9s19.8-16.6 19.8-29.6V288h96v96H192c-12.9 0-24.6 7.8-29.6 19.8s-2.2 25.7 6.9 34.9l64 64c12.5 12.5 32.8 12.5 45.3 0l64-64c9.2-9.2 11.9-22.9 6.9-34.9s-16.6-19.8-29.6-19.8H288V288h96v32c0 12.9 7.8 24.6 19.8 29.6s25.7 2.2 34.9-6.9l64-64c12.5-12.5 12.5-32.8 0-45.3l-64-64c-9.2-9.2-22.9-11.9-34.9-6.9s-19.8 16.6-19.8 29.6v32H288V128h32c12.9 0 24.6-7.8 29.6-19.8s2.2-25.7-6.9-34.9l-64-64z" /> </svg> </div> <div class="mapbtn" onclick="zoomOut()">-</div> </div>';
         document.querySelector(".move").addEventListener("mousedown", Hold);
         document.addEventListener("mouseup", () => {
           cancelAnimationFrame(animationFrameId);
@@ -540,6 +551,11 @@ function Load() {
         obj.forEach((obj) => {
           const div = createElementFromHTML(obj);
           div.addEventListener("mousedown", Hold);
+          if (div.querySelector(".object")) {
+            div.querySelectorAll(".object").forEach(item => {
+              item.addEventListener("mousedown", Hold);
+            })
+          }
           document.querySelector(".map").appendChild(div);
         });
       };
@@ -668,6 +684,3 @@ function AddNewRoom() {
     cancelAnimationFrame(animationFrameId);
   });
 }
-
-
-
